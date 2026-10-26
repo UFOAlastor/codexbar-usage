@@ -3,66 +3,51 @@
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/ZanderAlastor.codexbar-usage)](https://marketplace.visualstudio.com/items?itemName=ZanderAlastor.codexbar-usage)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Keep an eye on your **Codex quota** and **DeepSeek balance** without leaving the editor. The extension reads the [`codexbar`](https://codexbar.app) CLI and renders a compact status-bar item — and because it is a *workspace* extension, it reports the **machine that owns the workspace**. Over Remote-SSH that means your home Mac, not the laptop you are typing on.
+Every quota [CodexBar](https://codexbar.app) tracks — Codex, Claude, Gemini, Cursor, DeepSeek, Tavily, and the rest of its provider list — in the VS Code status bar. The extension reads the `codexbar` CLI, and because it is a *workspace* extension it reads it **on the machine that owns the workspace**: over Remote-SSH that is your home machine, not the laptop you are typing on.
+
+Nothing is hardcoded to a particular vendor. By default the extension asks CodexBar for **whatever providers you have enabled in the app** (`codexbar usage` without `--provider`), so switching a provider on in CodexBar is all it takes for it to show up here.
 
 ## What you see
 
 ```
-$(pulse) Codex 98% left · DS ¥79.86
+$(pulse) Codex 96% left · DS ¥77.60
 ```
 
-- `Codex 98% left` — the **remaining** share of the weekly Codex window. Set `codexbarUsage.codexMetric` to `used` if you prefer the consumed figure. The item turns warning-coloured at 80 % used and error-coloured at 95 %.
-- `DS ¥79.86` — current DeepSeek balance.
-- Both parts are independent toggles; anything unavailable is skipped instead of showing a dash.
+<img alt="" src="images/icon.png" width="0" height="0">
+
+- One segment per provider, **ranked by how close it is to running out**, capped at `statusBarLimit` (default 3).
+- Percentage providers show the remaining share of their most-consumed window; balance providers (DeepSeek ¥, Tavily credits …) show the amount instead.
+- Colours: warning at `warnThreshold` (80 % used), error at `errorThreshold` (95 %).
+- A `~` before a number means the last fetch failed and that value is the last good reading.
 
 ### Click = detail dialog
 
-Clicking the item opens a compact detail dialog (a quick-pick list, not a floating window):
+Clicking opens a compact list — one row per provider window, plus credits and reset credits:
 
 | Row | Shows |
 | --- | --- |
-| `codex · Weekly` | used / left / reset countdown, account, last update — with **refresh** and **pin** buttons |
-| `codex · reset credits` | every banked reset credit with expiry and countdown |
-| `codex · credits` | remaining credits |
-| `deepseek · Balance` | balance and breakdown |
+| `<provider> · <window>` | used / left / reset countdown, account, last update |
+| `<provider> · reset credits` | every banked reset credit with expiry and countdown |
+| `<provider> · credits` | remaining credits |
 | `Settings` | jump straight to the settings |
 
-Prefer the numbers always visible in the status bar itself? Use the row's **pin** button
-(or `CodexBar: Toggle pinned details`) to expand the item in place:
+The first row carries **refresh** and **pin** buttons. Pinning expands the status-bar item in place instead:
 
 ```
-$(chevron-down) Codex 98% left · ↻6d23h · 券2(3d8h) · DS ¥79.86
+$(chevron-down) Codex 96% left · ↻6d22h · DS ¥77.60
 ```
 
 ### Hover = detail card
 
-Hovering opens a small card right above the item (the same place VS Code shows any status-bar tooltip). It contains everything the CLI exposes:
-
-- account, plan/login method, provider source
-- every rate window with `used / left / countdown / reset timestamp`
-- credits remaining and extra-usage allowance
-- each banked reset credit with its expiry date and countdown
-- data confidence and codexbar version
-
-The card carries its own actions, so refreshing lives *inside* the detail view:
-
-`$(refresh) Refresh` · `$(gear) Settings` · `$(pin) Pin to status bar`
-
-> VS Code has no API for an arbitrary floating popover anchored to the status bar. The three surfaces used here are the item itself, its tooltip (the only true anchored popover) and a quick-pick dialog for the click action.
+Hovering shows a small card anchored right above the item (the only popover VS Code allows for a status bar item). It lists **every enabled provider**: account, plan, each window with used/left/countdown/reset timestamp, extra-usage allowance, credits, every reset credit with expiry, plus source, data confidence and the codexbar version. The card also carries clickable `Refresh` / `Settings` / `Pin` links, so refreshing lives inside the detail view rather than on the item itself.
 
 ### Resilience
 
-If a `codexbar` call fails (web dashboard timeout, CLI missing), the extension retries once, then falls back to the local CLI source for Codex, and finally keeps the **last good reading** marked with `~` instead of blanking the item:
-
-```
-$(pulse) Codex ~98% left · DS ~¥79.86
-```
-
-The detail card and dialog say how old that reading is and why the refresh failed.
+A failed fetch never blanks the item: the extension retries once, falls back to the local Codex CLI source where that makes sense, and then keeps the **last good reading** marked `~`, with the age of that reading and the failure reason in the card.
 
 ### Languages
 
-UI strings ship with English defaults and a Simplified Chinese translation (`package.nls.json` / `package.nls.zh-cn.json`). VS Code picks the language from its own display language — nothing to configure.
+English by default, Simplified Chinese when VS Code runs in Chinese (`package.nls.json` / `package.nls.zh-cn.json`). Command titles, setting names, descriptions and enum labels are all translated.
 
 ## Settings
 
@@ -70,14 +55,13 @@ UI strings ship with English defaults and a Simplified Chinese translation (`pac
 | --- | --- | --- |
 | `codexbarUsage.executable` | `codexbar` | CLI name or absolute path, resolved on the workspace host. |
 | `codexbarUsage.extraPath` | `["/opt/homebrew/bin","/usr/local/bin"]` | Extra PATH entries (Homebrew is often absent from the extension-host PATH). |
-| `codexbarUsage.showCodex` | `true` | Show the Codex section. |
-| `codexbarUsage.codexMetric` | `remaining` | `remaining` or `used`. |
-| `codexbarUsage.showDeepSeek` | `true` | Show the DeepSeek balance. |
-| `codexbarUsage.showCredits` | `false` | Show remaining Codex credits in the collapsed item. |
-| `codexbarUsage.showResetCredits` | `false` | Show the banked reset-credit count in the collapsed item. |
+| `codexbarUsage.providers` | `[]` | Empty = follow CodexBar's own enabled providers. Fill in ids (`codex`, `claude`, `gemini`, …) to force a set. |
+| `codexbarUsage.statusBarLimit` | `3` | Providers shown in the status bar (most constrained first). |
+| `codexbarUsage.metric` | `remaining` | `remaining` or `used`. |
+| `codexbarUsage.showCounters` | `false` | Also show credits / reset credits in the collapsed item. |
 | `codexbarUsage.refreshMode` | `adaptive` | `adaptive` · `fixed` · `off`. |
 | `codexbarUsage.refreshMinutes` | `10` | Interval used when `refreshMode` is `fixed`. |
-| `codexbarUsage.refreshOnFocus` | `true` | Refresh when the window regains focus (at most once a minute). |
+| `codexbarUsage.refreshOnFocus` | `true` | Refresh when the window regains focus (max once a minute). |
 | `codexbarUsage.warnThreshold` | `80` | Used % that switches the item to the warning colour. |
 | `codexbarUsage.errorThreshold` | `95` | Used % that switches the item to the error colour. |
 
@@ -88,43 +72,43 @@ CodexBar itself ships with `refreshFrequency = adaptive` and refreshes when its 
 | Situation | Poll interval |
 | --- | --- |
 | fresh / idle | 10 min |
-| weekly usage ≥ `warnThreshold` | 3 min |
-| weekly usage ≥ `errorThreshold` | 1 min |
+| worst provider ≥ `warnThreshold` | 3 min |
+| worst provider ≥ `errorThreshold` | 1 min |
 | any provider erroring | 5 min |
 | window regains focus | immediately (max once a minute) |
-
-Want a fixed cadence? `refreshMode: fixed` plus `refreshMinutes`. Want it strictly on demand? `refreshMode: off` and use `CodexBar: Refresh usage` below.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `CodexBar: Toggle pinned details` | Expand / collapse the status-bar item (default click action). |
+| `CodexBar: Show usage details` | Detail dialog (default click action). |
+| `CodexBar: Toggle pinned details` | Expand / collapse the status-bar item. |
 | `CodexBar: Refresh usage` | Fetch now. |
-| `CodexBar: Show usage details` | Quick-pick summary with refresh / pin / settings entries. |
 | `CodexBar: Open settings` | Jump to this extension's settings. |
 
 ## Requirements
 
-- `codexbar` installed and signed in **on the machine where the workspace lives**.
-- Apple Silicon Homebrew installs it at `/opt/homebrew/bin/codexbar`; that directory is added to `PATH` by default.
+- `codexbar` installed and signed in **on the machine where the workspace lives** (Apple Silicon Homebrew: `/opt/homebrew/bin/codexbar`).
+- Providers must be enabled in the CodexBar app — the extension displays what CodexBar reports, it never asks for credentials of its own.
 
-Sanity check on the same host:
+Sanity check on that host:
 
 ```bash
-codexbar usage --provider codex --format json
-codexbar usage --provider deepseek --format json
+codexbar usage --format json                        # the providers you enabled
+codexbar usage --provider codex --format json       # one provider
 ```
 
 ## Development
 
 ```bash
 node --check src/extension.js
-node scripts/dev-test.js            # activate() against the real CLI with a stubbed VS Code API
-npx @vscode/vsce package            # -> codexbar-usage-<version>.vsix
+node scripts/dev-test.js                       # activate() against the real CLI, stub VS Code API
+node scripts/dev-test.js --stale               # adds a failure injection pass
+TEST_PROVIDERS=tavily,codex node scripts/dev-test.js
+npx @vscode/vsce package
 ```
 
-`scripts/dev-test.js` prints the collapsed item, the expanded item and the detail card, so rendering can be checked without launching VS Code.
+`scripts/dev-test.js` prints the collapsed item, the pinned item, the hover card and the dialog rows, so rendering can be checked without launching VS Code.
 
 ### Installing a local build on a remote extension host
 
@@ -137,7 +121,7 @@ cp -R /tmp/vsix/extension/. ~/.vscode-server/extensions/ZanderAlastor.codexbar-u
 
 ## Publishing
 
-See [PUBLISHING.md](PUBLISHING.md). Short version:
+See [PUBLISHING.md](PUBLISHING.md).
 
 ```bash
 export VSCE_PAT="$(tr -d '\r\n' < ~/.vsce-pat)"   # PAT is never committed
@@ -147,9 +131,9 @@ unset VSCE_PAT
 
 ## Notes and limits
 
-- Data comes from CodexBar's own CLI output; this extension stores nothing locally and talks to no other service.
-- 5-hour and weekly windows, credits and reset credits only appear when CodexBar can read them for the signed-in plan.
-- The status bar item is right-aligned with priority 100; drag it within the status bar to reposition.
+- Data comes from CodexBar's own CLI output; the extension stores nothing locally and talks to no other service.
+- Providers without data are skipped silently; failures are surfaced in the card and dialog but never replace good numbers with an error glyph.
+- `--provider all` is deliberately avoided: it returns ~110 entries and makes unconfigured providers attempt network/cookie reads (slow, dozens of error rows). Asking for the enabled set takes ~3 s instead.
 
 ## License
 

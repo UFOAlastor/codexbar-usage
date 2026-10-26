@@ -1,6 +1,6 @@
 {
   "ext.displayName": "CodexBar Usage",
-  "ext.description": "Codex / DeepSeek quota in the VS Code status bar, powered by the codexbar CLI of the machine the extension runs on (works over Remote-SSH).",
+  "ext.description": "Codex, Claude, Gemini, DeepSeek and every other CodexBar provider in the VS Code status bar — read from the codexbar CLI of the machine the extension runs on (works over Remote-SSH).",
   "cmd.toggle.title": "Toggle pinned details",
   "cmd.refresh.title": "Refresh usage",
   "cmd.showDetails.title": "Show usage details",
@@ -8,13 +8,6 @@
   "config.title": "CodexBar Usage",
   "config.executable.desc": "Path or name of the codexbar CLI. Resolved on the machine hosting the workspace (remote when using Remote-SSH).",
   "config.extraPath.desc": "Extra PATH entries prepended when looking for codexbar (Homebrew dirs are not always on the extension host PATH).",
-  "config.showCodex.desc": "Show the Codex section in the status bar.",
-  "config.codexMetric.desc": "Which figure the status bar shows for the Codex weekly window.",
-  "config.codexMetric.remaining": "Show how much of the weekly window is left.",
-  "config.codexMetric.used": "Show how much of the weekly window has been used.",
-  "config.showDeepSeek.desc": "Show the DeepSeek balance in the status bar.",
-  "config.showCredits.desc": "Show remaining Codex credits in the collapsed status bar item.",
-  "config.showResetCredits.desc": "Show the number of banked Codex reset credits in the collapsed status bar item.",
   "config.refreshMode.desc": "How often the status bar refreshes. CodexBar itself uses an adaptive cadence, so 'adaptive' is the default.",
   "config.refreshMode.adaptive": "Match CodexBar's behaviour: poll slowly when idle, faster as the weekly window fills up, and refresh when the window regains focus.",
   "config.refreshMode.fixed": "Poll every 'Refresh interval' minutes.",
@@ -22,5 +15,11 @@
   "config.refreshMinutes.desc": "Interval used when the refresh mode is 'fixed'.",
   "config.refreshOnFocus.desc": "Refresh when the VS Code window regains focus (mimics CodexBar refreshing when its menu opens). Throttled to once a minute.",
   "config.warnThreshold.desc": "Used percentage at which the status bar turns into the warning colour.",
-  "config.errorThreshold.desc": "Used percentage at which the status bar turns into the error colour."
+  "config.errorThreshold.desc": "Used percentage at which the status bar turns into the error colour.",
+  "config.providers.desc": "Providers to query. Leave empty to use whatever CodexBar itself has enabled (recommended: `codexbar usage` with no `--provider` only returns the providers you turned on in CodexBar). Fill in ids such as `codex`, `claude`, `gemini`, `cursor` to force a specific set.",
+  "config.statusBarLimit.desc": "How many providers appear in the status bar (ranked by the most consumed window). Everything always shows in the hover card and the detail dialog.",
+  "config.metric.desc": "Whether percentages show what is left or what has been used.",
+  "config.metric.remaining": "Show the remaining share of each window.",
+  "config.metric.used": "Show the consumed share of each window.",
+  "config.showCounters.desc": "Also show secondary counters (banked credits, reset credits) in the collapsed status bar item."
 }

@@ -1,6 +1,6 @@
 {
   "ext.displayName": "CodexBar 额度",
-  "ext.description": "在 VS Code 状态栏查看 Codex 额度与 DeepSeek 余额，数据取自扩展所在机器的 codexbar CLI（Remote-SSH 时即为远端那台）。",
+  "ext.description": "在 VS Code 状态栏查看 Codex、Claude、Gemini、DeepSeek 等 CodexBar 支持的所有平台的额度，数据取自扩展所在机器的 codexbar CLI（Remote-SSH 时即为远端那台）。",
   "cmd.toggle.title": "切换状态栏固定详情",
   "cmd.refresh.title": "刷新额度",
   "cmd.showDetails.title": "查看额度详情",
@@ -8,13 +8,6 @@
   "config.title": "CodexBar 额度",
   "config.executable.desc": "codexbar 命令名或绝对路径，在承载工作区的机器上解析（Remote-SSH 时是远端机器）。",
   "config.extraPath.desc": "查找 codexbar 时优先使用的额外 PATH 目录（Homebrew 目录常常不在扩展宿主的 PATH 里）。",
-  "config.showCodex.desc": "在状态栏显示 Codex 部分。",
-  "config.codexMetric.desc": "状态栏里 Codex 周窗口显示哪个数字。",
-  "config.codexMetric.remaining": "显示周窗口还剩多少（默认）。",
-  "config.codexMetric.used": "显示周窗口已用掉多少。",
-  "config.showDeepSeek.desc": "在状态栏显示 DeepSeek 余额。",
-  "config.showCredits.desc": "在收起状态下也显示 Codex 剩余 credits。",
-  "config.showResetCredits.desc": "在收起状态下也显示可用重置券数量。",
   "config.refreshMode.desc": "状态栏刷新频率。CodexBar 自己用的是自适应节奏，所以默认也是 adaptive。",
   "config.refreshMode.adaptive": "跟随 CodexBar：空闲时慢、周额度吃紧时加快，窗口重新获得焦点时刷新一次。",
   "config.refreshMode.fixed": "按「固定刷新间隔」的分钟数轮询。",
@@ -22,5 +15,11 @@
   "config.refreshMinutes.desc": "刷新模式为 fixed 时使用的间隔（分钟）。",
   "config.refreshOnFocus.desc": "VS Code 窗口重新获得焦点时刷新（对应 CodexBar 打开菜单就刷新）。每分钟最多一次。",
   "config.warnThreshold.desc": "已用百分比达到该值时状态栏变成警告色。",
-  "config.errorThreshold.desc": "已用百分比达到该值时状态栏变成错误色。"
+  "config.errorThreshold.desc": "已用百分比达到该值时状态栏变成错误色。",
+  "config.providers.desc": "要查询的平台。留空表示跟随 CodexBar 自己启用的那些（推荐：不带 `--provider` 的 `codexbar usage` 只会返回你在 CodexBar 里打开的平台）。填 id 可以强制指定，如 `codex`、`claude`、`gemini`、`cursor`。",
+  "config.statusBarLimit.desc": "状态栏里显示几个平台（按最吃紧的窗口排序）。悬停卡片和详情框始终显示全部。",
+  "config.metric.desc": "百分比显示剩余还是已用。",
+  "config.metric.remaining": "显示各窗口剩余比例（默认）。",
+  "config.metric.used": "显示各窗口已用比例。",
+  "config.showCounters.desc": "收起状态下也显示次要计数（credits、重置券）。"
 }

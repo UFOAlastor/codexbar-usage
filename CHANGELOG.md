@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- **All CodexBar providers**, not just Codex and DeepSeek: the extension asks CodexBar for its enabled providers (`codexbar usage` with no `--provider`) and renders them generically — windows, balances, credits and reset credits all derive from the CLI payload.
+- New `codexbarUsage.providers` override (empty = follow CodexBar's toggles) and `codexbarUsage.statusBarLimit` (default 3, most constrained first).
+- `codexbarUsage.metric` replaces `codexMetric` (`remaining` / `used`; the old key is still honoured) and `codexbarUsage.showCounters` replaces the two Codex-specific counter toggles.
+- Providers are ranked by consumption, colours follow the worst provider, and stale markers work per provider.
+- Deliberately avoids `--provider all` (≈110 entries, unconfigured providers hit the network, ~30 s); the enabled call takes ~3 s.
+- Docs, settings copy (EN + zh-CN) and `dev-test.js` updated; `TEST_PROVIDERS` lets the test force a provider set.
+
 ## 0.3.1
 
 - Clicking the item now opens a **detail dialog** (quick-pick list with refresh and pin buttons); in-place expansion moved to the pin button / `Toggle pinned details`.

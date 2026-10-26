@@ -2,7 +2,7 @@
   "name": "codexbar-usage",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "ZanderAlastor",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -76,55 +76,42 @@
           "scope": "machine-overridable",
           "description": "%config.extraPath.desc%"
         },
-        "codexbarUsage.showCodex": {
-          "type": "boolean",
-          "default": true,
-          "scope": "window",
-          "description": "%config.showCodex.desc%"
+        "codexbarUsage.providers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine-overridable",
+          "markdownDescription": "%config.providers.desc%"
         },
-        "codexbarUsage.codexMetric": {
+        "codexbarUsage.statusBarLimit": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 8,
+          "scope": "window",
+          "description": "%config.statusBarLimit.desc%"
+        },
+        "codexbarUsage.metric": {
           "type": "string",
           "enum": [
             "remaining",
             "used"
           ],
           "enumDescriptions": [
-            "%config.codexMetric.remaining%",
-            "%config.codexMetric.used%"
+            "%config.metric.remaining%",
+            "%config.metric.used%"
           ],
           "default": "remaining",
           "scope": "window",
-          "description": "%config.codexMetric.desc%"
+          "description": "%config.metric.desc%"
         },
-        "codexbarUsage.showDeepSeek": {
-          "type": "boolean",
-          "default": true,
-          "scope": "window",
-          "description": "%config.showDeepSeek.desc%"
-        },
-        "codexbarUsage.showResetCredits": {
+        "codexbarUsage.showCounters": {
           "type": "boolean",
           "default": false,
           "scope": "window",
-          "description": "%config.showResetCredits.desc%"
-        },
-        "codexbarUsage.showCredits": {
-          "type": "boolean",
-          "default": false,
-          "scope": "window",
-          "description": "%config.showCredits.desc%"
-        },
-        "codexbarUsage.warnThreshold": {
-          "type": "number",
-          "default": 80,
-          "scope": "window",
-          "description": "%config.warnThreshold.desc%"
-        },
-        "codexbarUsage.errorThreshold": {
-          "type": "number",
-          "default": 95,
-          "scope": "window",
-          "description": "%config.errorThreshold.desc%"
+          "description": "%config.showCounters.desc%"
         },
         "codexbarUsage.refreshMode": {
           "type": "string",
@@ -154,6 +141,18 @@
           "default": true,
           "scope": "window",
           "description": "%config.refreshOnFocus.desc%"
+        },
+        "codexbarUsage.warnThreshold": {
+          "type": "number",
+          "default": 80,
+          "scope": "window",
+          "description": "%config.warnThreshold.desc%"
+        },
+        "codexbarUsage.errorThreshold": {
+          "type": "number",
+          "default": 95,
+          "scope": "window",
+          "description": "%config.errorThreshold.desc%"
         }
       }
     }
