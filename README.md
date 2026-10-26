@@ -14,15 +14,24 @@ $(pulse) Codex 98% left · DS ¥79.86
 - `DS ¥79.86` — current DeepSeek balance.
 - Both parts are independent toggles; anything unavailable is skipped instead of showing a dash.
 
-### Click = expand in place
+### Click = detail dialog
 
-Clicking the item **pins a wider version in the status bar itself** — no floating window, nothing covering your code:
+Clicking the item opens a compact detail dialog (a quick-pick list, not a floating window):
+
+| Row | Shows |
+| --- | --- |
+| `codex · Weekly` | used / left / reset countdown, account, last update — with **refresh** and **pin** buttons |
+| `codex · reset credits` | every banked reset credit with expiry and countdown |
+| `codex · credits` | remaining credits |
+| `deepseek · Balance` | balance and breakdown |
+| `Settings` | jump straight to the settings |
+
+Prefer the numbers always visible in the status bar itself? Use the row's **pin** button
+(or `CodexBar: Toggle pinned details`) to expand the item in place:
 
 ```
 $(chevron-down) Codex 98% left · ↻6d23h · 券2(3d8h) · DS ¥79.86
 ```
-
-That adds the time until the weekly window resets, remaining Codex credits, and the banked reset credits with the expiry of the next one. Click again to collapse.
 
 ### Hover = detail card
 
@@ -38,7 +47,21 @@ The card carries its own actions, so refreshing lives *inside* the detail view:
 
 `$(refresh) Refresh` · `$(gear) Settings` · `$(pin) Pin to status bar`
 
-> VS Code has no API for an arbitrary floating popover anchored to the status bar — the nearest UI surfaces are the status-bar item itself and its tooltip. That is why details are split between an in-place expansion and the hover card.
+> VS Code has no API for an arbitrary floating popover anchored to the status bar. The three surfaces used here are the item itself, its tooltip (the only true anchored popover) and a quick-pick dialog for the click action.
+
+### Resilience
+
+If a `codexbar` call fails (web dashboard timeout, CLI missing), the extension retries once, then falls back to the local CLI source for Codex, and finally keeps the **last good reading** marked with `~` instead of blanking the item:
+
+```
+$(pulse) Codex ~98% left · DS ~¥79.86
+```
+
+The detail card and dialog say how old that reading is and why the refresh failed.
+
+### Languages
+
+UI strings ship with English defaults and a Simplified Chinese translation (`package.nls.json` / `package.nls.zh-cn.json`). VS Code picks the language from its own display language — nothing to configure.
 
 ## Settings
 

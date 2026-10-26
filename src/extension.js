@@ -71,15 +71,26 @@ function describeError(err, stderr) {
   return text.slice(0, 400) || String(err.message);
 }
 
+const FETCH_ATTEMPTS = 2;
+
+/** One provider, with a retry and (for Codex) a fallback to the local CLI source
+ *  when the web dashboard read fails. A transient timeout must not blank the item. */
 async function fetchProvider(provider) {
-  try {
-    const raw = await run(['usage', '--provider', provider, '--format', 'json']);
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed[0] : parsed;
-  } catch (err) {
-    log(`${provider} failed: ${err.userMessage || err.message}`);
-    return { error: err.userMessage || String(err.message) };
+  const modes = provider === 'codex' ? [[], ['--source', 'cli']] : [[]];
+  let lastError = null;
+  for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
+    for (const extra of modes) {
+      try {
+        const raw = await run(['usage', '--provider', provider, '--format', 'json', ...extra]);
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed[0] : parsed;
+      } catch (err) {
+        lastError = err;
+        log(`${provider} attempt ${attempt + 1} (${extra.join(' ') || 'default'}) failed: ${err.userMessage || err.message}`);
+      }
+    }
   }
+  return { error: (lastError && (lastError.userMessage || lastError.message)) || 'unknown error' };
 }
 
 async function fetchAll() {
@@ -90,7 +101,23 @@ async function fetchAll() {
   const results = await Promise.all(wanted.map(p => fetchProvider(p)));
   const providers = {};
   wanted.forEach((p, i) => { providers[p] = results[i]; });
-  return { host: os.hostname(), at: new Date(), providers };
+
+  // Keep the last good reading per provider instead of flashing an error marker:
+  // mark it stale so the item still shows numbers with a hint.
+  const now = new Date();
+  if (snapshot) {
+    for (const [name, provider] of Object.entries(providers)) {
+      const previous = snapshot.providers && snapshot.providers[name];
+      if (provider && provider.error && previous && !previous.error) {
+        providers[name] = { ...previous, stale: true, staleSince: previous.fetchedAt || snapshot.at, lastError: provider.error };
+      } else if (provider && !provider.error) {
+        provider.fetchedAt = now;
+      }
+    }
+  } else {
+    for (const provider of Object.values(providers)) if (provider && !provider.error) provider.fetchedAt = now;
+  }
+  return { host: os.hostname(), at: now, providers };
 }
 
 /* ---------- formatting helpers ---------- */
@@ -169,7 +196,8 @@ function statusText(state, isExpanded) {
     }
     if (weekly) {
       const used = Math.round(weekly.usedPercent);
-      parts.push(s.codexMetric === 'used' ? `Codex ${used}% used` : `Codex ${100 - used}% left`);
+      const staleMark = codex && codex.stale ? '~' : '';
+      parts.push(s.codexMetric === 'used' ? `Codex ${staleMark}${used}% used` : `Codex ${staleMark}${100 - used}% left`);
       if (isExpanded && weekly.resetsAt) parts.push(`↻${countdown(weekly.resetsAt)}`);
     } else if (codex && codex.error) {
       parts.push('Codex ✗');
@@ -188,7 +216,7 @@ function statusText(state, isExpanded) {
 
   if (s.showDeepSeek) {
     const balance = ds && ds.usage && ds.usage.primary ? money(ds.usage.primary.resetDescription) : '';
-    if (balance) parts.push(`DS ${balance}`);
+    if (balance) parts.push(`DS ${ds && ds.stale ? '~' : ''}${balance}`);
     else if (ds && ds.error) parts.push('DS ✗');
   }
 
@@ -249,6 +277,9 @@ function detailCard(state) {
     const account = (u.identity && u.identity.accountEmail) || provider.account || '';
     const plan = u.loginMethod || (u.identity && u.identity.loginMethod) || '';
     md.appendMarkdown(`**${name}**${account ? ` · \`${account}\`` : ''}${plan ? ` · ${plan}` : ''}\n\n`);
+    if (provider.stale) {
+      md.appendMarkdown(`> stale — last good reading ${formatLocal(provider.staleSince)}<br>> ${provider.lastError || 'fetch failed'}\n\n`);
+    }
     for (const line of windowLines(provider)) {
       md.appendMarkdown(`- ${line.label}: ${line.text}\n`);
     }
@@ -347,32 +378,66 @@ function toggleExpanded() {
   paint();
 }
 
+const REFRESH_BUTTON = { iconPath: new vscode.ThemeIcon('refresh'), tooltip: 'Refresh now' };
+const PIN_BUTTON = { iconPath: new vscode.ThemeIcon('pin'), tooltip: 'Pin details into the status bar' };
+
+/** Detail dialog shown on click: a compact list of every metric, with refresh and
+ *  pin available as buttons on the first row. */
 async function showDetails() {
   if (!snapshot) await refresh({ silent: true });
   if (!snapshot) return vscode.window.showWarningMessage('CodexBar: no data yet.');
-  const rows = [];
+
+  const items = [];
   for (const [name, provider] of Object.entries(snapshot.providers)) {
     if (!provider || provider.error) {
-      rows.push({ label: `$(error) ${name}: ${(provider && provider.error) || 'no data'}`, action: 'none' });
+      items.push({
+        label: `$(error) ${name}`,
+        description: 'fetch failed',
+        detail: (provider && provider.error) || 'no data'
+      });
       continue;
     }
-    const lines = windowLines(provider);
-    const text = lines.length ? lines.map(l => `${l.label} ${l.text}`).join(' | ') : 'ok';
-    rows.push({ label: `$(graph) ${name}: ${text}`, action: 'none' });
+    const u = provider.usage || {};
+    const account = (u.identity && u.identity.accountEmail) || provider.account || '';
+    const stale = provider.stale ? ` · stale since ${formatLocal(provider.staleSince)}` : '';
+    for (const line of windowLines(provider)) {
+      items.push({
+        label: `$(${'graph'}) ${name} · ${line.label}`,
+        description: line.text,
+        detail: [account, `updated ${provider.fetchedAt ? formatLocal(provider.fetchedAt) : formatLocal(snapshot.at)}${stale}`].filter(Boolean).join(' · ')
+      });
+    }
+    const rc = resetCredits(provider);
+    if (rc.available) {
+      items.push({
+        label: `$(${'tag'}) ${name} · reset credits`,
+        description: `${rc.available} available`,
+        detail: rc.list.filter(c => !c.status || c.status === 'available')
+          .slice(0, 4)
+          .map(c => `${c.title || 'reset'} — expires ${formatLocal(c.expires_at)} (${countdown(c.expires_at)})`)
+          .join(' · ') || 'no expiry data'
+      });
+    }
+    const credits = provider.credits;
+    if (credits && credits.balanceReadSucceeded && typeof credits.remaining === 'number') {
+      items.push({ label: `$(${'coin'}) ${name} · credits`, description: String(credits.remaining), detail: 'banked on the account' });
+    }
   }
-  const pick = await vscode.window.showQuickPick(
-    [
-      { label: '$(refresh) Refresh now', action: 'refresh' },
-      { label: '$(pin) Toggle pinned details', action: 'toggle' },
-      { label: '$(gear) Open settings', action: 'settings' },
-      ...rows
-    ],
-    { title: `CodexBar @ ${snapshot.host}`, placeHolder: `updated ${snapshot.at.toLocaleTimeString()}` }
-  );
-  if (!pick) return;
-  if (pick.action === 'refresh') return refresh();
-  if (pick.action === 'toggle') return toggleExpanded();
-  if (pick.action === 'settings') return openSettings();
+  if (items.length) {
+    items[0].buttons = [REFRESH_BUTTON, PIN_BUTTON];
+  }
+  items.push({ label: '$(gear) Settings', description: '', detail: 'codexbarUsage.*', action: 'settings' });
+
+  const picked = await vscode.window.showQuickPick(items, {
+    title: `CodexBar @ ${snapshot.host} — updated ${snapshot.at.toLocaleTimeString()}`,
+    matchOnDetail: true,
+    ignoreFocusOut: true
+  });
+  if (!picked) return;
+  if (picked.action === 'settings') return openSettings();
+  // Any other row: the row buttons are the actions.
+  if (picked.button === REFRESH_BUTTON) return refresh();
+  if (picked.button === PIN_BUTTON) return toggleExpanded();
 }
 
 function openSettings() {
@@ -383,7 +448,7 @@ function activate(context) {
   channel = vscode.window.createOutputChannel('CodexBar');
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.name = 'CodexBar Usage';
-  statusItem.command = 'codexbarUsage.toggle';
+  statusItem.command = 'codexbarUsage.showDetails';
   statusItem.show();
 
   context.subscriptions.push(

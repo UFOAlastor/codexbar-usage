@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Clicking the item now opens a **detail dialog** (quick-pick list with refresh and pin buttons); in-place expansion moved to the pin button / `Toggle pinned details`.
+- Resilient refresh: one retry, Codex web → CLI source fallback, and last-good data kept with a `~` stale marker instead of an error glyph.
+- Settings, commands and descriptions localised through `package.nls.json` / `package.nls.zh-cn.json` (English default, Chinese when VS Code runs in Chinese).
+
 ## 0.3.0
 
 - Clicking the item now **expands details in place** in the status bar (reset countdown, credits, reset-credit expiry) instead of firing a refresh; the refresh action moved into the detail view.
