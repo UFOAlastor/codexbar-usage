@@ -15,6 +15,7 @@ let channel = null;
 let timer = null;
 let inFlight = false;
 let lastFocusRefresh = 0;
+let expanded = false;
 /** @type {{host:string, at:Date, providers:Object}|null} */
 let snapshot = null;
 
@@ -92,6 +93,8 @@ async function fetchAll() {
   return { host: os.hostname(), at: new Date(), providers };
 }
 
+/* ---------- formatting helpers ---------- */
+
 function pct(v) {
   return v === null || v === undefined ? '–' : `${Math.round(v)}%`;
 }
@@ -106,34 +109,91 @@ function codexWeekly(codex) {
   return u.secondary && typeof u.secondary.usedPercent === 'number' ? u.secondary : null;
 }
 
-function statusText(state) {
+function codexPrimary(codex) {
+  const u = (codex && codex.usage) || {};
+  return u.primary && typeof u.primary.usedPercent === 'number' ? u.primary : null;
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function formatLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Compact countdown such as `6d23h`, `3h12m`, `14m`. */
+function countdown(iso) {
+  if (!iso) return '';
+  const target = new Date(iso).getTime();
+  if (isNaN(target)) return '';
+  let diff = target - Date.now();
+  if (diff <= 0) return 'now';
+  const d = Math.floor(diff / 86400000); diff -= d * 86400000;
+  const h = Math.floor(diff / 3600000); diff -= h * 3600000;
+  const m = Math.floor(diff / 60000);
+  if (d > 0) return `${d}d${h}h`;
+  if (h > 0) return `${h}h${pad(m)}m`;
+  return `${m}m`;
+}
+
+/** Reset credits appear both at the top level and under usage.codexResetCredits. */
+function resetCredits(codex) {
+  const top = (codex && codex.resetCredits) || {};
+  const nested = (codex && codex.usage && codex.usage.codexResetCredits) || {};
+  const list = Array.isArray(nested.credits) ? nested.credits : [];
+  const available = top.available ?? nested.availableCount
+    ?? list.filter(c => c.status === 'available').length;
+  return {
+    available,
+    nextExpiresAt: top.nextExpiresAt || (list[0] && list[0].expires_at) || '',
+    list
+  };
+}
+
+/* ---------- status bar ---------- */
+
+function statusText(state, isExpanded) {
   const s = settings();
   const parts = [];
   const codex = state.providers.codex;
   const ds = state.providers.deepseek;
 
   if (s.showCodex) {
+    const primary = codexPrimary(codex);
     const weekly = codexWeekly(codex);
+    if (primary && isExpanded) {
+      const used = Math.round(primary.usedPercent);
+      parts.push(s.codexMetric === 'used' ? `5h ${used}%` : `5h ${100 - used}% left`);
+    }
     if (weekly) {
       const used = Math.round(weekly.usedPercent);
       parts.push(s.codexMetric === 'used' ? `Codex ${used}% used` : `Codex ${100 - used}% left`);
+      if (isExpanded && weekly.resetsAt) parts.push(`↻${countdown(weekly.resetsAt)}`);
+    } else if (codex && codex.error) {
+      parts.push('Codex ✗');
     }
-    else if (codex && codex.error) parts.push('Codex ✗');
+    if (codex && !codex.error) {
+      const rc = resetCredits(codex);
+      const creditsLeft = codex.credits && codex.credits.remaining;
+      if ((isExpanded || s.showCredits) && typeof creditsLeft === 'number' && creditsLeft > 0) {
+        parts.push(`${creditsLeft} cr`);
+      }
+      if ((isExpanded || s.showResetCredits) && rc.available) {
+        parts.push(`券${rc.available}${isExpanded && rc.nextExpiresAt ? `(${countdown(rc.nextExpiresAt)})` : ''}`);
+      }
+    }
   }
-  if (s.showCodex && s.showCredits) {
-    const remaining = codex && codex.credits && codex.credits.remaining;
-    if (typeof remaining === 'number' && remaining > 0) parts.push(`${remaining} cr`);
-  }
-  if (s.showCodex && s.showResetCredits) {
-    const resets = codex && codex.resetCredits && codex.resetCredits.available;
-    if (resets) parts.push(`券${resets}`);
-  }
+
   if (s.showDeepSeek) {
     const balance = ds && ds.usage && ds.usage.primary ? money(ds.usage.primary.resetDescription) : '';
     if (balance) parts.push(`DS ${balance}`);
     else if (ds && ds.error) parts.push('DS ✗');
   }
-  return parts.length ? `$(pulse) ${parts.join(' · ')}` : '$(pulse) codexbar';
+
+  const icon = isExpanded ? '$(chevron-down)' : '$(pulse)';
+  return `${icon} ${parts.length ? parts.join(' · ') : 'codexbar'}`;
 }
 
 function severity(state) {
@@ -143,14 +203,6 @@ function severity(state) {
   if (weekly.usedPercent >= s.errorThreshold) return 'error';
   if (weekly.usedPercent >= s.warnThreshold) return 'warn';
   return 'none';
-}
-
-function formatLocal(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function windowLines(provider) {
@@ -163,49 +215,73 @@ function windowLines(provider) {
     const label = labels[key] || (w.windowMinutes ? `${Math.round(w.windowMinutes / 60)}h window` : key);
     const bits = [];
     if (label !== 'Balance' && typeof w.usedPercent === 'number') {
-      bits.push(`${pct(w.usedPercent)} used · ${100 - Math.round(w.usedPercent)}% left`);
+      bits.push(`${Math.round(w.usedPercent)}% used · ${100 - Math.round(w.usedPercent)}% left`);
+      if (w.resetsAt) bits.push(`↻ ${countdown(w.resetsAt)}`);
     }
     if (w.resetDescription) bits.push(w.resetDescription);
     else if (w.resetsAt) bits.push(`resets ${formatLocal(w.resetsAt)}`);
-    if (bits.length) out.push(`- ${label}: ${bits.join(' · ')}`);
+    if (bits.length) out.push({ label, text: bits.join(' · ') });
   }
   return out;
 }
 
-function tooltip(state) {
-  const md = new vscode.MarkdownString();
+/** The detail "sticker": a compact card anchored to the status bar item. Hovering
+ *  shows it; the links inside are clickable because the markdown is trusted. */
+function detailCard(state) {
+  const md = new vscode.MarkdownString(undefined, true);
+  md.isTrusted = { enabledCommands: ['codexbarUsage.refresh', 'codexbarUsage.openSettings', 'codexbarUsage.toggle'] };
+  md.supportThemeIcons = true;
   md.appendMarkdown(`**CodexBar** · \`${state.host}\`\n\n`);
-  md.appendMarkdown(`_updated ${state.at.toLocaleTimeString()} · click for actions_\n\n`);
+  md.appendMarkdown(
+    `<sub>updated ${state.at.toLocaleTimeString()} · ` +
+    `[$(refresh) Refresh](command:codexbarUsage.refresh) · ` +
+    `[$(gear) Settings](command:codexbarUsage.openSettings) · ` +
+    `[$(pin) Pin to status bar](command:codexbarUsage.toggle)</sub>\n\n`
+  );
+
   for (const [name, provider] of Object.entries(state.providers)) {
-    md.appendMarkdown(`---\n\n**${name}**\n\n`);
+    md.appendMarkdown('---\n\n');
     if (!provider || provider.error) {
-      md.appendMarkdown(`error: ${(provider && provider.error) || 'no data'}\n\n`);
+      md.appendMarkdown(`**${name}** — error: ${(provider && provider.error) || 'no data'}\n\n`);
       continue;
     }
     const u = provider.usage || {};
     const account = (u.identity && u.identity.accountEmail) || provider.account || '';
-    if (account) md.appendMarkdown(`account: \`${account}\`${u.loginMethod ? ' · ' + u.loginMethod : ''}\n\n`);
-    const lines = windowLines(provider);
-    if (lines.length) md.appendMarkdown(lines.join('\n') + '\n');
+    const plan = u.loginMethod || (u.identity && u.identity.loginMethod) || '';
+    md.appendMarkdown(`**${name}**${account ? ` · \`${account}\`` : ''}${plan ? ` · ${plan}` : ''}\n\n`);
+    for (const line of windowLines(provider)) {
+      md.appendMarkdown(`- ${line.label}: ${line.text}\n`);
+    }
     const credits = provider.credits;
-    if (credits && credits.balanceReadSucceeded && typeof credits.remaining === 'number' && credits.remaining > 0) {
+    if (credits && credits.balanceReadSucceeded && typeof credits.remaining === 'number') {
       md.appendMarkdown(`- credits: ${credits.remaining}\n`);
     }
-    const resets = provider.resetCredits;
-    if (resets && resets.available) {
-      md.appendMarkdown(`- reset credits: ${resets.available}${resets.nextExpiresAt ? ` (next expires ${formatLocal(resets.nextExpiresAt)})` : ''}\n`);
+    const cost = u.providerCost;
+    if (cost && cost.limit) {
+      md.appendMarkdown(`- ${cost.period || 'extra usage'}: ${cost.used}/${cost.limit} ${cost.currencyCode || ''}\n`);
     }
+    const rc = resetCredits(provider);
+    if (rc.available) {
+      md.appendMarkdown(`- reset credits: ${rc.available}\n`);
+      for (const credit of rc.list.slice(0, 4)) {
+        if (credit.status && credit.status !== 'available') continue;
+        md.appendMarkdown(`  - ${credit.title || 'reset'} · expires ${formatLocal(credit.expires_at)} (${countdown(credit.expires_at)})\n`);
+      }
+    }
+    const meta = [];
+    if (provider.source) meta.push(`source ${provider.source}`);
+    if (u.dataConfidence) meta.push(`confidence ${u.dataConfidence}`);
+    if (provider.version) meta.push(`codexbar ${provider.version}`);
+    if (meta.length) md.appendMarkdown(`\n<sub>${meta.join(' · ')}</sub>\n`);
     md.appendMarkdown('\n');
   }
-  md.appendMarkdown(`_click the item for refresh / details / settings_`);
   return md;
 }
 
 function paint() {
   if (!statusItem || !snapshot) return;
-  const s = settings();
-  statusItem.text = statusText(snapshot);
-  statusItem.tooltip = tooltip(snapshot);
+  statusItem.text = statusText(snapshot, expanded);
+  statusItem.tooltip = detailCard(snapshot);
   const level = severity(snapshot);
   statusItem.backgroundColor = level === 'error'
     ? new vscode.ThemeColor('statusBarItem.errorBackground')
@@ -214,10 +290,12 @@ function paint() {
       : undefined;
 }
 
+/* ---------- refresh ---------- */
+
 async function refresh({ silent = false } = {}) {
   if (inFlight) return;
   inFlight = true;
-  if (statusItem) statusItem.text = '$(sync~spin) codexbar';
+  if (statusItem && !snapshot) statusItem.text = '$(sync~spin) codexbar';
   try {
     snapshot = await fetchAll();
     log(`refreshed on ${snapshot.host}: ${Object.keys(snapshot.providers).join(', ')}`);
@@ -236,8 +314,7 @@ const ADAPTIVE_WARN_MIN = 3;
 const ADAPTIVE_HOT_MIN = 1;
 const ADAPTIVE_ERROR_MIN = 5;
 
-/** Adaptive cadence, mirroring CodexBar's own 'adaptive' refresh: idle polling is
- *  slow, and it tightens as the weekly window fills up or when a fetch keeps failing. */
+/** Adaptive cadence, mirroring CodexBar's own 'adaptive' refresh setting. */
 function nextIntervalMs() {
   const s = settings();
   if (s.refreshMode === 'off') return 0;
@@ -263,31 +340,38 @@ function scheduleRefresh() {
   log(`next refresh in ${Math.round(ms / 60000)} min (mode=${settings().refreshMode})`);
 }
 
+/* ---------- commands ---------- */
+
+function toggleExpanded() {
+  expanded = !expanded;
+  paint();
+}
+
 async function showDetails() {
-  if (!snapshot) {
-    await refresh({ silent: true });
-  }
+  if (!snapshot) await refresh({ silent: true });
   if (!snapshot) return vscode.window.showWarningMessage('CodexBar: no data yet.');
   const rows = [];
   for (const [name, provider] of Object.entries(snapshot.providers)) {
     if (!provider || provider.error) {
-      rows.push(`${name}: error — ${(provider && provider.error) || 'no data'}`);
+      rows.push({ label: `$(error) ${name}: ${(provider && provider.error) || 'no data'}`, action: 'none' });
       continue;
     }
-    const bits = windowLines(provider).map(l => l.replace(/^- /, ''));
-    if (!bits.length) bits.push('ok');
-    rows.push(`${name}: ${bits.join(' | ')}`);
+    const lines = windowLines(provider);
+    const text = lines.length ? lines.map(l => `${l.label} ${l.text}`).join(' | ') : 'ok';
+    rows.push({ label: `$(graph) ${name}: ${text}`, action: 'none' });
   }
   const pick = await vscode.window.showQuickPick(
     [
       { label: '$(refresh) Refresh now', action: 'refresh' },
+      { label: '$(pin) Toggle pinned details', action: 'toggle' },
       { label: '$(gear) Open settings', action: 'settings' },
-      ...rows.map(r => ({ label: r, action: 'none' }))
+      ...rows
     ],
     { title: `CodexBar @ ${snapshot.host}`, placeHolder: `updated ${snapshot.at.toLocaleTimeString()}` }
   );
   if (!pick) return;
   if (pick.action === 'refresh') return refresh();
+  if (pick.action === 'toggle') return toggleExpanded();
   if (pick.action === 'settings') return openSettings();
 }
 
@@ -299,13 +383,13 @@ function activate(context) {
   channel = vscode.window.createOutputChannel('CodexBar');
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.name = 'CodexBar Usage';
-  statusItem.command = 'codexbarUsage.menu';
+  statusItem.command = 'codexbarUsage.toggle';
   statusItem.show();
 
   context.subscriptions.push(
     channel,
     statusItem,
-    vscode.commands.registerCommand('codexbarUsage.menu', showDetails),
+    vscode.commands.registerCommand('codexbarUsage.toggle', toggleExpanded),
     vscode.commands.registerCommand('codexbarUsage.refresh', () => refresh()),
     vscode.commands.registerCommand('codexbarUsage.showDetails', showDetails),
     vscode.commands.registerCommand('codexbarUsage.openSettings', openSettings),
@@ -333,4 +417,8 @@ function deactivate() {
   timer = null;
 }
 
-module.exports = { activate, deactivate, _internals: { statusText, windowLines, money, codexWeekly, severity, formatLocal } };
+module.exports = {
+  activate,
+  deactivate,
+  _internals: { statusText, windowLines, money, codexWeekly, severity, formatLocal, countdown, resetCredits, detailCard }
+};

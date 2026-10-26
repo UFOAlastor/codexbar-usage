@@ -28,12 +28,16 @@ const values = {
 };
 
 const item = { text: '', tooltip: null, command: '', name: '', visible: false, show() { this.visible = true; } };
+const commands = {};
 let saved = '';
 
 const vscode = {
   StatusBarAlignment: { Left: 1, Right: 2 },
   ThemeColor: class { constructor(id) { this.id = id; } },
-  MarkdownString: class { constructor() { this.value = ''; } appendMarkdown(s) { this.value += s; return this; } },
+  MarkdownString: class {
+    constructor() { this.value = ''; this.isTrusted = false; this.supportThemeIcons = false; }
+    appendMarkdown(s) { this.value += s; return this; }
+  },
   window: {
     createStatusBarItem: () => item,
     createOutputChannel: () => ({ appendLine: l => { if (process.env.DEBUG) console.error(l); }, dispose() {} }),
@@ -43,7 +47,10 @@ const vscode = {
     showQuickPick: async () => undefined,
     onDidChangeWindowState: () => ({ dispose() {} })
   },
-  commands: { registerCommand: () => ({ dispose() {} }), executeCommand: async () => {} },
+  commands: {
+    registerCommand: (name, fn) => { commands[name] = fn; return { dispose() {} }; },
+    executeCommand: async () => {}
+  },
   workspace: {
     getConfiguration: () => ({ get: k => values[k] }),
     onDidChangeConfiguration: () => ({ dispose() {} })
@@ -66,9 +73,10 @@ const tick = setInterval(() => {
   const busy = /spin/.test(item.text);
   if (!busy && Date.now() - started > 1500) {
     clearInterval(tick);
-    console.log(`status bar : ${item.text}`);
-    console.log(`severity   : ${ext._internals.severity ? 'n/a' : 'n/a'}`);
-    console.log('--- tooltip ---');
+    console.log(`collapsed  : ${item.text}`);
+    if (commands['codexbarUsage.toggle']) commands['codexbarUsage.toggle']();
+    console.log(`expanded   : ${item.text}`);
+    console.log('--- detail card (tooltip) ---');
     console.log(item.tooltip ? item.tooltip.value : '(none)');
     ext.deactivate();
     process.exit(0);

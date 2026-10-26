@@ -2,8 +2,8 @@
   "name": "codexbar-usage",
   "displayName": "CodexBar Usage",
   "description": "Codex / DeepSeek quota in the VS Code status bar, powered by the codexbar CLI of the machine the extension runs on (works over Remote-SSH).",
-  "version": "0.2.0",
-  "publisher": "zanderalastor",
+  "version": "0.3.0",
+  "publisher": "ZanderAlastor",
   "license": "MIT",
   "icon": "images/icon.png",
   "engines": {
@@ -39,8 +39,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "codexbarUsage.menu",
-        "title": "CodexBar: Menu"
+        "command": "codexbarUsage.toggle",
+        "title": "CodexBar: Toggle pinned details"
       },
       {
         "command": "codexbarUsage.refresh",

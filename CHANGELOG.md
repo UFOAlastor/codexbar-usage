@@ -1,15 +1,22 @@
 # Changelog
 
+## 0.3.0
+
+- Clicking the item now **expands details in place** in the status bar (reset countdown, credits, reset-credit expiry) instead of firing a refresh; the refresh action moved into the detail view.
+- Detail card rewritten: per-window used/left/countdown/reset time, extra-usage allowance, every banked reset credit with expiry, data confidence and codexbar version.
+- Detail card exposes clickable `Refresh` / `Settings` / `Pin` commands.
+- New `codexbarUsage.toggle` command; quick-pick summary now offers refresh, pin and settings.
+- Publisher set to `ZanderAlastor`; marketplace-facing README, publishing guide and icon polished.
+
 ## 0.2.0
 
-- Adaptive refresh cadence aligned with CodexBar's own behaviour, plus `fixed` / `off` modes.
+- Remaining-share display by default, with `codexbarUsage.codexMetric` to switch to used.
+- Adaptive refresh cadence aligned with CodexBar's own setting, plus `fixed` / `off` modes.
 - Refresh on window focus (throttled to once a minute).
-- Reset-credit and credit counters are now opt-in settings (off by default).
-- Warning / error colours on the status bar at `warnThreshold` / `errorThreshold`.
-- Click opens a menu (refresh, details, settings) instead of refreshing blindly.
-- Output channel `CodexBar` for diagnostics; errors surfaced in the tooltip.
-- Packaged project, README, changelog and `vsce` build script.
+- Reset-credit and credit counters opt-in, default off.
+- Warning / error colours on the status bar.
+- Output channel for diagnostics; packaged vsce build, README, changelog, icon.
 
 ## 0.1.0
 
-- First version: status bar with Codex weekly usage, reset-credit count and DeepSeek balance, read from the `codexbar` CLI on the workspace host.
+- First version: status bar with Codex weekly usage, reset-credit count and DeepSeek balance from the `codexbar` CLI on the workspace host.
