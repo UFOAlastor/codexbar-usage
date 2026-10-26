@@ -3,6 +3,14 @@
 Everything here runs on the machine that owns the repository
 (`/Volumes/SSD/Code/codexbar-usage`). No secrets are stored in the repo.
 
+## 0. Current state
+
+- Publisher `ZanderAlastor` exists; **0.3.1 was published on 2026-10-26**.
+- Repository: <https://github.com/UFOAlastor/codexbar-usage>.
+- No token is stored in this repo or on disk; the PAT used for the first upload
+  was written to `~/.vsce-pat` by the owner, used once, then overwritten and
+  deleted.
+
 ## 1. One-time setup
 
 1. Sign in to <https://marketplace.visualstudio.com/manage> with the Microsoft
@@ -11,14 +19,27 @@ Everything here runs on the machine that owns the repository
    is case-sensitive and must match `publisher` in `package.json`.
 3. Authorise `vsce`:
 
+`--azure-credential` does **not** open a browser or a device-code prompt: vsce
+only chains Environment / Azure CLI / Managed Identity / Azure PowerShell / azd
+credentials, so without an `az login` session it silently stalls after packing.
+
+Use a PAT instead — **never paste it into a chat or a commit**:
+
 ```bash
-npx @vscode/vsce login ZanderAlastor          # device-code / browser flow
-# or non-interactive, with a PAT scoped to Marketplace > Manage:
-VSCE_PAT=*** npx @vscode/vsce publish minor --azure-credential=false
+# owner runs this in their own terminal; input is hidden
+read -rs -p "PAT: " P && printf '%s' "$P" > ~/.vsce-pat && chmod 600 ~/.vsce-pat && unset P
 ```
 
-Prefer the interactive `--azure-credential` login: no long-lived PAT has to be
-stored anywhere, and it can be run from the VS Code remote terminal directly.
+```bash
+# publishing machine reads the file, never echoes it
+export VSCE_PAT="$(tr -d '\r\n' < ~/.vsce-pat)"
+npx @vscode/vsce publish            # or: publish patch / publish minor
+unset VSCE_PAT
+```
+
+Delete the file afterwards (overwrite with random bytes, then remove). Create the
+PAT at `https://dev.azure.com/<org>/_usersSettings/tokens` with scope
+**Marketplace → Manage**; find your organisation at <https://aex.dev.azure.com/me>.
 
 ## 2. Pre-flight checklist
 
@@ -82,4 +103,11 @@ Use these values in the publisher portal (the portal takes them from
   `vsce publish` fails with `Publisher 'ZanderAlastor' not found` otherwise.
 - Every published version must be higher than the previous one; bump
   `package.json` or pass the version to `vsce publish`.
-- `--allow-missing-repository` is only needed while the GitHub remote is absent.
+- The repository now exists, so `vsce package` no longer needs
+  `--allow-missing-repository`.
+- Verify a release from any machine:
+  ```bash
+  curl -s -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery' \
+    -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=7.2-preview.1' \
+    -d '{"filters":[{"criteria":[{"filterType":7,"value":"ZanderAlastor.codexbar-usage"}],"pageNumber":1,"pageSize":1}],"flags":914}'
+  ```

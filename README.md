@@ -1,6 +1,7 @@
 # CodexBar Usage
 
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/ZanderAlastor.codexbar-usage)](https://marketplace.visualstudio.com/items?itemName=ZanderAlastor.codexbar-usage)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Keep an eye on your **Codex quota** and **DeepSeek balance** without leaving the editor. The extension reads the [`codexbar`](https://codexbar.app) CLI and renders a compact status-bar item — and because it is a *workspace* extension, it reports the **machine that owns the workspace**. Over Remote-SSH that means your home Mac, not the laptop you are typing on.
 
@@ -139,8 +140,9 @@ cp -R /tmp/vsix/extension/. ~/.vscode-server/extensions/ZanderAlastor.codexbar-u
 See [PUBLISHING.md](PUBLISHING.md). Short version:
 
 ```bash
-npx @vscode/vsce login ZanderAlastor     # or: vsce publish --azure-credential
-npx @vscode/vsce publish minor --azure-credential
+export VSCE_PAT="$(tr -d '\r\n' < ~/.vsce-pat)"   # PAT is never committed
+npx @vscode/vsce publish minor
+unset VSCE_PAT
 ```
 
 ## Notes and limits
