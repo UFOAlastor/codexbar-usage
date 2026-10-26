@@ -7,9 +7,15 @@ Everything here runs on the machine that owns the repository
 
 - Publisher `ZanderAlastor` exists; **0.3.1 was published on 2026-10-26**.
 - Repository: <https://github.com/UFOAlastor/codexbar-usage>.
-- No token is stored in this repo or on disk; the PAT used for the first upload
-  was written to `~/.vsce-pat` by the owner, used once, then overwritten and
-  deleted.
+- The PAT lives in the **macOS Keychain** (service `vsce-pat`, account
+  `ZanderAlastor`, 1-year expiry), so later releases need no re-entry. It is never
+  written into the repo and never appears in logs or chat:
+
+  ```bash
+  export VSCE_PAT="$(security find-generic-password -s vsce-pat -a ZanderAlastor -w | tr -d '\n')"
+  npx @vscode/vsce publish
+  unset VSCE_PAT
+  ```
 
 ## 1. One-time setup
 
@@ -60,6 +66,9 @@ Check by hand:
 ## 3. Publish
 
 ```bash
+# PAT from the Keychain (see section 0)
+export VSCE_PAT="$(security find-generic-password -s vsce-pat -a ZanderAlastor -w | tr -d '\n')"
+
 npx @vscode/vsce publish patch      # 0.3.0 -> 0.3.1
 npx @vscode/vsce publish minor      # 0.3.0 -> 0.4.0
 npx @vscode/vsce publish 1.0.0      # explicit version
