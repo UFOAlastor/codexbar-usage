@@ -1,7 +1,6 @@
 {
   "ext.displayName": "CodexBar 额度",
   "ext.description": "在 VS Code 状态栏查看 Codex、Claude、Gemini、DeepSeek 等 CodexBar 支持的所有平台的额度，数据取自扩展所在机器的 codexbar CLI（Remote-SSH 时即为远端那台）。",
-  "cmd.toggle.title": "切换状态栏固定详情",
   "cmd.refresh.title": "刷新额度",
   "cmd.showDetails.title": "查看额度详情",
   "cmd.openSettings.title": "打开设置",

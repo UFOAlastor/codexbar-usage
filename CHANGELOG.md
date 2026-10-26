@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+- **Removed the pin / expand mode** — it duplicated what the hover card and the click dialog already show. The status bar stays one line; the `codexbarUsage.toggle` command is gone.
+- `showCounters` now appends credits / reset credits to the status-bar item itself (previously it only worked in the expanded state).
+- The dialog's first row carries just the refresh button; the hover card links only `Refresh` and `Settings`.
+
 ## 0.5.0
 
 - **Settings no longer Codex/DeepSeek-centric.** `inheritCodexBar` (default on) reads CodexBar's own config and defaults: enabled providers, `refreshFrequency`, menu-bar sort preference (`menuBarShowsHighestUsage` / `providersSortedAlphabetically`) and `hidePersonalInfo`.

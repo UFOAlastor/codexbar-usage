@@ -31,15 +31,11 @@ Clicking opens a compact list — one row per provider window, plus credits and 
 | `<provider> · credits` | remaining credits |
 | `Settings` | jump straight to the settings |
 
-The first row carries **refresh** and **pin** buttons. Pinning expands the status-bar item in place instead:
-
-```
-$(chevron-down) Codex 96% left · ↻6d22h · DS ¥77.60
-```
+The first row carries a **refresh** button. There is no pin/expand mode: the status bar stays one line, and the dialog is where the detail lives.
 
 ### Hover = detail card
 
-Hovering shows a small card anchored right above the item (the only popover VS Code allows for a status bar item). It lists **every enabled provider**: account, plan, each window with used/left/countdown/reset timestamp, extra-usage allowance, credits, every reset credit with expiry, plus source, data confidence and the codexbar version. The card also carries clickable `Refresh` / `Settings` / `Pin` links, so refreshing lives inside the detail view rather than on the item itself.
+Hovering shows a small card anchored right above the item (the only popover VS Code allows for a status bar item). It lists **every enabled provider**: account, plan, each window with used/left/countdown/reset timestamp, extra-usage allowance, credits, every reset credit with expiry, plus source, data confidence and the codexbar version. The card also carries clickable `Refresh` / `Settings` links, so refreshing lives inside the detail view rather than on the item itself.
 
 ### Resilience
 
@@ -77,7 +73,7 @@ Nothing to configure; VS Code picks the bundle from its display language.
 | `codexbarUsage.hiddenProviders` | `[]` | Provider ids to keep out of the status bar / detail views. |
 | `codexbarUsage.statusBarLimit` | `3` | Providers shown in the status bar (most constrained first). |
 | `codexbarUsage.metric` | `remaining` | `remaining` or `used`. |
-| `codexbarUsage.showCounters` | `false` | Also show credits / reset credits in the collapsed item. |
+| `codexbarUsage.showCounters` | `false` | Also append credits / reset credits to the status-bar item. |
 | `codexbarUsage.refreshMode` | `adaptive` | `adaptive` · `fixed` · `off`. |
 | `codexbarUsage.refreshMinutes` | `10` | Interval used when `refreshMode` is `fixed`. |
 | `codexbarUsage.refreshOnFocus` | `true` | Refresh when the window regains focus (max once a minute). |
@@ -101,7 +97,6 @@ CodexBar itself ships with `refreshFrequency = adaptive` and refreshes when its 
 | Command | Purpose |
 | --- | --- |
 | `CodexBar: Show usage details` | Detail dialog (default click action). |
-| `CodexBar: Toggle pinned details` | Expand / collapse the status-bar item. |
 | `CodexBar: Refresh usage` | Fetch now. |
 | `CodexBar: Open settings` | Jump to this extension's settings. |
 

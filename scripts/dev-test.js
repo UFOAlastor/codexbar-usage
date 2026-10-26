@@ -109,10 +109,7 @@ async function waitIdle(limitMs = Number(process.env.WAIT_MS || 90000)) {
   await waitIdle();
 
   console.log('--- status bar ---');
-  console.log(`collapsed : ${item.text}`);
-  if (commands['codexbarUsage.toggle']) commands['codexbarUsage.toggle']();
-  console.log(`pinned    : ${item.text}`);
-  if (commands['codexbarUsage.toggle']) commands['codexbarUsage.toggle']();
+  console.log(`status bar: ${item.text}`);
 
   console.log('\n--- detail card (hover) ---');
   console.log(item.tooltip ? item.tooltip.value : '(none)');
@@ -132,7 +129,7 @@ async function waitIdle(limitMs = Number(process.env.WAIT_MS || 90000)) {
     values['codexbarUsage.executable'] = 'codexbar-does-not-exist';
     await commands['codexbarUsage.refresh']();
     await waitIdle(60000);
-    console.log(`collapsed : ${item.text}`);
+    console.log(`status bar: ${item.text}`);
     console.log('tooltip stale section:');
     const tip = item.tooltip ? item.tooltip.value : '';
     console.log(tip.split('\n').filter(l => /stale|error/i.test(l)).join('\n') || '(no stale marker)');

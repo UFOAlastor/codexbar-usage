@@ -1,7 +1,6 @@
 {
   "ext.displayName": "CodexBar Usage",
   "ext.description": "Codex, Claude, Gemini, DeepSeek and every other CodexBar provider in the VS Code status bar — read from the codexbar CLI of the machine the extension runs on (works over Remote-SSH).",
-  "cmd.toggle.title": "Toggle pinned details",
   "cmd.refresh.title": "Refresh usage",
   "cmd.showDetails.title": "Show usage details",
   "cmd.openSettings.title": "Open settings",

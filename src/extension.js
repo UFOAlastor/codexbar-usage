@@ -125,7 +125,6 @@ let channel = null;
 let timer = null;
 let inFlight = false;
 let lastFocusRefresh = 0;
-let expanded = false;
 /** @type {{host:string, at:Date, providers:Object}|null} */
 let snapshot = null;
 
@@ -418,11 +417,11 @@ function orderProviders(list, s) {
   return list.slice();
 }
 
-function statusText(state, isExpanded) {
+function statusText(state) {
   const s = settings();
   const healthy = Object.values(state.providers).filter(p => p && !p.error);
   const ranked = orderProviders(healthy, s);
-  const shown = ranked.slice(0, isExpanded ? s.statusBarLimit + 2 : s.statusBarLimit);
+  const shown = ranked.slice(0, s.statusBarLimit);
 
   const parts = [];
   for (const provider of shown) {
@@ -430,13 +429,9 @@ function statusText(state, isExpanded) {
     if (!value) continue;
     const mark = provider.stale ? '~' : '';
     parts.push(`${shortLabel(provider)} ${mark}${value}`);
-    if (isExpanded) {
-      const w = limitingWindow(provider);
-      if (w && w.resetsAt) parts.push(`↻${countdown(w.resetsAt)}`);
-      if (s.showCounters) {
-        for (const c of counters(provider)) {
-          parts.push(c.kind === 'resets' ? `${tr('reset credits')} ${c.value}` : `${c.value} cr`);
-        }
+    if (s.showCounters) {
+      for (const c of counters(provider)) {
+        parts.push(c.kind === 'resets' ? `${tr('reset credits')} ${c.value}` : `${c.value} cr`);
       }
     }
   }
@@ -445,8 +440,7 @@ function statusText(state, isExpanded) {
     parts.push(failures.length ? `codexbar ✗ ${failures.length}` : 'codexbar');
   }
 
-  const icon = isExpanded ? '$(chevron-down)' : '$(pulse)';
-  return `${icon} ${parts.join(' · ')}`;
+  return `$(pulse) ${parts.join(' · ')}`;
 }
 
 /** The detail "sticker": a compact card anchored to the status bar item. Hovering
@@ -454,14 +448,13 @@ function statusText(state, isExpanded) {
 function detailCard(state) {
   const prefs = codexbarPrefs();
   const md = new vscode.MarkdownString(undefined, true);
-  md.isTrusted = { enabledCommands: ['codexbarUsage.refresh', 'codexbarUsage.openSettings', 'codexbarUsage.toggle'] };
+  md.isTrusted = { enabledCommands: ['codexbarUsage.refresh', 'codexbarUsage.openSettings'] };
   md.supportThemeIcons = true;
   md.appendMarkdown(`**CodexBar** · \`${state.host}\`\n\n`);
   md.appendMarkdown(
     `<sub>${tr('updated {0}', state.at.toLocaleTimeString())} · ` +
     `[$(refresh) ${tr('Refresh')}](command:codexbarUsage.refresh) · ` +
-    `[$(gear) ${tr('Settings')}](command:codexbarUsage.openSettings) · ` +
-    `[$(pin) ${tr('Pin to status bar')}](command:codexbarUsage.toggle)</sub>\n\n`
+    `[$(gear) ${tr('Settings')}](command:codexbarUsage.openSettings)</sub>\n\n`
   );
 
   for (const [id, provider] of Object.entries(state.providers)) {
@@ -515,7 +508,7 @@ function detailCard(state) {
 
 function paint() {
   if (!statusItem || !snapshot) return;
-  statusItem.text = statusText(snapshot, expanded);
+  statusItem.text = statusText(snapshot);
   statusItem.tooltip = detailCard(snapshot);
   const level = severity(snapshot);
   statusItem.backgroundColor = level === 'error'
@@ -580,16 +573,10 @@ function scheduleRefresh() {
 
 /* ---------- commands ---------- */
 
-function toggleExpanded() {
-  expanded = !expanded;
-  paint();
-}
-
 const REFRESH_BUTTON = { iconPath: new vscode.ThemeIcon('refresh'), tooltip: tr('Refresh now') };
-const PIN_BUTTON = { iconPath: new vscode.ThemeIcon('pin'), tooltip: tr('Pin details into the status bar') };
 
-/** Detail dialog shown on click: one row per provider window, with refresh and
- *  pin available as buttons on the first row. Fully localised via vscode.l10n. */
+/** Detail dialog shown on click: one row per provider window, with refresh as a
+ *  button on the first row. Fully localised via vscode.l10n. */
 async function showDetails() {
   if (!snapshot) await refresh({ silent: true });
   if (!snapshot) return vscode.window.showWarningMessage(tr('CodexBar: no data yet.'));
@@ -634,7 +621,7 @@ async function showDetails() {
   if (!items.length) {
     items.push({ label: `$(info) ${tr('no providers enabled in CodexBar')}`, description: '', detail: tr('enable providers in the CodexBar app') });
   }
-  items[0].buttons = [REFRESH_BUTTON, PIN_BUTTON];
+  items[0].buttons = [REFRESH_BUTTON];
   items.push({ label: `$(gear) ${tr('Settings')}`, description: '', detail: 'codexbarUsage.*', action: 'settings' });
 
   const picked = await vscode.window.showQuickPick(items, {
@@ -645,7 +632,6 @@ async function showDetails() {
   if (!picked) return;
   if (picked.action === 'settings') return openSettings();
   if (picked.button === REFRESH_BUTTON) return refresh();
-  if (picked.button === PIN_BUTTON) return toggleExpanded();
 }
 
 function openSettings() {
@@ -662,7 +648,6 @@ function activate(context) {
   context.subscriptions.push(
     channel,
     statusItem,
-    vscode.commands.registerCommand('codexbarUsage.toggle', toggleExpanded),
     vscode.commands.registerCommand('codexbarUsage.refresh', () => refresh()),
     vscode.commands.registerCommand('codexbarUsage.showDetails', showDetails),
     vscode.commands.registerCommand('codexbarUsage.openSettings', openSettings),
@@ -694,7 +679,7 @@ module.exports = {
   activate,
   deactivate,
   _internals: {
-    statusText, detailCard, windows, limitingWindow, providerValue, counters,
+    statusText, detailCard, windows, limitingWindow, providerValue, counters, orderProviders,
     severity, shortLabel, money, formatLocal, countdown
   }
 };
