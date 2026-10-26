@@ -1,0 +1,161 @@
+{
+  "name": "codexbar-usage",
+  "displayName": "CodexBar Usage",
+  "description": "Codex / DeepSeek quota in the VS Code status bar, powered by the codexbar CLI of the machine the extension runs on (works over Remote-SSH).",
+  "version": "0.2.0",
+  "publisher": "zanderalastor",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "codex",
+    "codexbar",
+    "openai",
+    "quota",
+    "usage",
+    "deepseek",
+    "status bar",
+    "remote"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UFOAlastor/codexbar-usage.git"
+  },
+  "bugs": {
+    "url": "https://github.com/UFOAlastor/codexbar-usage/issues"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexbarUsage.menu",
+        "title": "CodexBar: Menu"
+      },
+      {
+        "command": "codexbarUsage.refresh",
+        "title": "CodexBar: Refresh usage"
+      },
+      {
+        "command": "codexbarUsage.showDetails",
+        "title": "CodexBar: Show usage details"
+      },
+      {
+        "command": "codexbarUsage.openSettings",
+        "title": "CodexBar: Open settings"
+      }
+    ],
+    "configuration": {
+      "title": "CodexBar Usage",
+      "properties": {
+        "codexbarUsage.executable": {
+          "type": "string",
+          "default": "codexbar",
+          "scope": "machine-overridable",
+          "description": "Path or name of the codexbar CLI. Resolved on the machine hosting the workspace (remote when using Remote-SSH)."
+        },
+        "codexbarUsage.extraPath": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/opt/homebrew/bin",
+            "/usr/local/bin"
+          ],
+          "scope": "machine-overridable",
+          "description": "Extra PATH entries prepended when looking for codexbar (Homebrew dirs are not always on the extension host PATH)."
+        },
+        "codexbarUsage.showCodex": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "Show the Codex (OpenAI) weekly window in the status bar."
+        },
+        "codexbarUsage.codexMetric": {
+          "type": "string",
+          "enum": [
+            "remaining",
+            "used"
+          ],
+          "enumDescriptions": [
+            "Show how much of the weekly window is left (default).",
+            "Show how much of the weekly window has been used."
+          ],
+          "default": "remaining",
+          "scope": "window",
+          "description": "Which figure the status bar shows for the Codex weekly window."
+        },
+        "codexbarUsage.showDeepSeek": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "Show the DeepSeek balance in the status bar."
+        },
+        "codexbarUsage.showResetCredits": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Show the number of banked Codex reset credits in the status bar."
+        },
+        "codexbarUsage.showCredits": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Show remaining Codex credits in the status bar (hidden when zero)."
+        },
+        "codexbarUsage.warnThreshold": {
+          "type": "number",
+          "default": 80,
+          "scope": "window",
+          "description": "Weekly usage percentage at which the status bar turns into a warning colour."
+        },
+        "codexbarUsage.errorThreshold": {
+          "type": "number",
+          "default": 95,
+          "scope": "window",
+          "description": "Weekly usage percentage at which the status bar turns into the error colour."
+        },
+        "codexbarUsage.refreshMode": {
+          "type": "string",
+          "enum": [
+            "adaptive",
+            "fixed",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Match CodexBar's own behaviour: poll rarely when idle, faster as the weekly window fills up, and refresh when the window regains focus.",
+            "Poll every codexbarUsage.refreshMinutes minutes.",
+            "Never poll automatically; refresh only when clicked or by command."
+          ],
+          "default": "adaptive",
+          "scope": "window",
+          "description": "How often the status bar refreshes. CodexBar itself uses an adaptive cadence, so 'adaptive' is the default."
+        },
+        "codexbarUsage.refreshMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "scope": "window",
+          "description": "Interval used when codexbarUsage.refreshMode is 'fixed'."
+        },
+        "codexbarUsage.refreshOnFocus": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "Refresh when the VS Code window regains focus (mimics CodexBar refreshing when its menu opens). Throttled to once a minute."
+        }
+      }
+    }
+  }
+}
