@@ -21,5 +21,11 @@
   "config.metric.desc": "百分比显示剩余还是已用。",
   "config.metric.remaining": "显示各窗口剩余比例（默认）。",
   "config.metric.used": "显示各窗口已用比例。",
-  "config.showCounters.desc": "收起状态下也显示次要计数（credits、重置券）。"
+  "config.showCounters.desc": "收起状态下也显示次要计数（credits、重置券）。",
+  "config.inheritCodexBar.desc": "读取 CodexBar 自己的配置（`~/.config/codexbar/config.json` 与 CodexBar 的 defaults）来获得启用的平台、刷新节奏、排序方式和个人信息遮蔽，让 CodexBar 始终是唯一的配置入口。",
+  "config.sortOrder.desc": "状态栏中各平台片段的顺序。",
+  "config.sortOrder.codexbar": "跟随 CodexBar 菜单栏自己的偏好（按用量或按字母）。",
+  "config.sortOrder.usage": "用量最吃紧的排最前。",
+  "config.sortOrder.alphabetical": "按平台 id 字母序。",
+  "config.hiddenProviders.desc": "即使在 CodexBar 里启用了，也不显示在状态栏和详情里的平台 id。例如 `[\"tavily\"]`。"
 }

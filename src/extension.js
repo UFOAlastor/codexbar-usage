@@ -2,7 +2,9 @@
 
 const vscode = require('vscode');
 const cp = require('child_process');
+const fs = require('fs');
 const os = require('os');
+const path = require('path');
 
 const SECTION = 'codexbarUsage';
 const EXEC_TIMEOUT_MS = 90000;
@@ -48,6 +50,73 @@ const SHORT_LABELS = {
   zed: 'Zed'
 };
 
+/** Localised string helper: the English literal is the l10n key, so the bundle
+ *  files stay readable and the dev harness can run without VS Code. */
+function tr(source, ...args) {
+  let out = source;
+  const l10n = vscode.l10n;
+  if (l10n && typeof l10n.t === 'function') {
+    try {
+      out = args.length ? l10n.t(source, ...args) : l10n.t(source);
+    } catch (err) {
+      out = source;
+    }
+  }
+  if (typeof out !== 'string') out = source;
+  return args.length
+    ? out.replace(/\{(\d+)\}/g, (m, i) => (args[Number(i)] !== undefined ? String(args[Number(i)]) : m))
+    : out;
+}
+
+const CODEXBAR_CONFIG = path.join(os.homedir(), '.config/codexbar/config.json');
+const PREFS_TTL_MS = 60000;
+let prefsCache = { at: 0, value: null };
+
+function readDefaultsText() {
+  try {
+    return cp.execFileSync('defaults', ['read', 'com.steipete.codexbar'], { encoding: 'utf8', timeout: 5000 });
+  } catch (err) {
+    return '';
+  }
+}
+
+/** Reuse CodexBar's own configuration instead of duplicating it: which providers
+ *  are enabled, how the menu bar sorts them, whether personal info is masked and
+ *  what refresh cadence the app uses. */
+function codexbarPrefs() {
+  if (!settings().inheritCodexBar) {
+    return { loaded: false, enabled: null, hidePersonalInfo: false, sortAlphabetically: false, highestUsage: true, refreshFrequency: 'adaptive' };
+  }
+  if (prefsCache.value && Date.now() - prefsCache.at < PREFS_TTL_MS) return prefsCache.value;
+
+  const out = { loaded: false, enabled: null, hidePersonalInfo: false, sortAlphabetically: false, highestUsage: true, refreshFrequency: 'adaptive' };
+  try {
+    const cfg = JSON.parse(fs.readFileSync(CODEXBAR_CONFIG, 'utf8'));
+    if (Array.isArray(cfg.providers)) {
+      out.enabled = cfg.providers.filter(p => p && p.enabled && p.id).map(p => p.id);
+    }
+    out.loaded = true;
+  } catch (err) {
+    log(`codexbar config unreadable: ${err.message}`);
+  }
+  const text = readDefaultsText();
+  if (text) {
+    out.loaded = true;
+    const grab = key => {
+      const m = text.match(new RegExp(`\\b${key}\\s*=\\s*([^;]+);`));
+      return m ? m[1].trim() : '';
+    };
+    const freq = grab('refreshFrequency');
+    if (freq) out.refreshFrequency = freq.replace(/^"|"$/g, '');
+    out.hidePersonalInfo = grab('hidePersonalInfo') === '1';
+    out.sortAlphabetically = grab('providersSortedAlphabetically') === '1';
+    const highest = grab('menuBarShowsHighestUsage');
+    if (highest === '1' || highest === '0') out.highestUsage = highest === '1';
+  }
+  prefsCache = { at: Date.now(), value: out };
+  return out;
+}
+
 /** @type {vscode.StatusBarItem|null} */
 let statusItem = null;
 /** @type {vscode.OutputChannel|null} */
@@ -69,6 +138,9 @@ function settings() {
     statusBarLimit: Math.max(1, Number(c.get('statusBarLimit') ?? 3)),
     // `codexMetric` is the pre-0.4 name; keep honouring it for existing setups.
     metric: (c.get('metric') || c.get('codexMetric')) === 'used' ? 'used' : 'remaining',
+    inheritCodexBar: c.get('inheritCodexBar') !== false,
+    sortOrder: c.get('sortOrder') || 'codexbar',
+    hiddenProviders: Array.isArray(c.get('hiddenProviders')) ? c.get('hiddenProviders') : [],
     showCounters: c.get('showCounters') === true,
     refreshMode: c.get('refreshMode') || 'adaptive',
     refreshMinutes: Math.max(1, Number(c.get('refreshMinutes') ?? 10)),
@@ -198,6 +270,10 @@ async function fetchAll() {
       providers[id] = { ...entry, provider: id, fetchedAt: now };
     }
   }
+  const hidden = new Set(settings().hiddenProviders);
+  if (hidden.size) {
+    for (const id of Object.keys(providers)) if (hidden.has(id)) delete providers[id];
+  }
   return { host: os.hostname(), at: now, providers };
 }
 
@@ -248,11 +324,13 @@ function windows(provider) {
   for (const key of WINDOW_KEYS) {
     const w = u[key];
     if (!w) continue;
-    const label = labels[key] || (w.windowMinutes ? `${Math.round(w.windowMinutes / 60)}h` : key);
+    const rawLabel = labels[key] || (w.windowMinutes ? `${Math.round(w.windowMinutes / 60)}h` : key);
+    const label = tr(rawLabel);
     out.push({
       key,
       label,
-      isBalance: label === 'Balance' || w.usedPercent === undefined || w.usedPercent === null,
+      // Decide from the raw label: after translation it is no longer 'Balance'.
+      isBalance: rawLabel === 'Balance' || w.usedPercent === undefined || w.usedPercent === null,
       usedPercent: typeof w.usedPercent === 'number' ? w.usedPercent : null,
       resetsAt: w.resetsAt || '',
       resetDescription: w.resetDescription || '',
@@ -277,7 +355,7 @@ function providerValue(provider, metric) {
   if (w.balance) return w.balance;
   if (w.usedPercent === null) return '';
   const used = Math.round(w.usedPercent);
-  return metric === 'used' ? `${used}% used` : `${100 - used}% left`;
+  return metric === 'used' ? tr('{0}% used', used) : tr('{0}% left', 100 - used);
 }
 
 /** Banked credits / reset credits, whatever shape the provider reports. */
@@ -319,17 +397,31 @@ function severity(state) {
 
 /* ---------- status bar ---------- */
 
+/** Segment order. `codexbar` defers to CodexBar's own menu-bar preferences, so the
+ *  two surfaces stay consistent without configuring anything twice. */
+function orderProviders(list, s) {
+  const prefs = codexbarPrefs();
+  const used = provider => {
+    const w = limitingWindow(provider);
+    return w && w.usedPercent !== null ? w.usedPercent : -1;
+  };
+  const byUsage = (a, b) => used(b) - used(a);
+  const byAlpha = (a, b) => String(a.provider).localeCompare(String(b.provider));
+
+  if (s.sortOrder === 'usage') return list.slice().sort(byUsage);
+  if (s.sortOrder === 'alphabetical') return list.slice().sort(byAlpha);
+  if (s.sortOrder === 'codexbar') {
+    if (prefs.highestUsage) return list.slice().sort(byUsage);
+    if (prefs.sortAlphabetically) return list.slice().sort(byAlpha);
+    return list.slice();
+  }
+  return list.slice();
+}
+
 function statusText(state, isExpanded) {
   const s = settings();
   const healthy = Object.values(state.providers).filter(p => p && !p.error);
-  // Most constrained first, so the status bar shows what is about to run out.
-  const ranked = healthy.slice().sort((a, b) => {
-    const wa = limitingWindow(a);
-    const wb = limitingWindow(b);
-    const ua = wa && wa.usedPercent !== null ? wa.usedPercent : -1;
-    const ub = wb && wb.usedPercent !== null ? wb.usedPercent : -1;
-    return ub - ua;
-  });
+  const ranked = orderProviders(healthy, s);
   const shown = ranked.slice(0, isExpanded ? s.statusBarLimit + 2 : s.statusBarLimit);
 
   const parts = [];
@@ -343,7 +435,7 @@ function statusText(state, isExpanded) {
       if (w && w.resetsAt) parts.push(`↻${countdown(w.resetsAt)}`);
       if (s.showCounters) {
         for (const c of counters(provider)) {
-          parts.push(c.kind === 'resets' ? `券${c.value}` : `${c.value} cr`);
+          parts.push(c.kind === 'resets' ? `${tr('reset credits')} ${c.value}` : `${c.value} cr`);
         }
       }
     }
@@ -360,58 +452,60 @@ function statusText(state, isExpanded) {
 /** The detail "sticker": a compact card anchored to the status bar item. Hovering
  *  shows it; the links inside are clickable because the markdown is trusted. */
 function detailCard(state) {
+  const prefs = codexbarPrefs();
   const md = new vscode.MarkdownString(undefined, true);
   md.isTrusted = { enabledCommands: ['codexbarUsage.refresh', 'codexbarUsage.openSettings', 'codexbarUsage.toggle'] };
   md.supportThemeIcons = true;
   md.appendMarkdown(`**CodexBar** · \`${state.host}\`\n\n`);
   md.appendMarkdown(
-    `<sub>updated ${state.at.toLocaleTimeString()} · ` +
-    `[$(refresh) Refresh](command:codexbarUsage.refresh) · ` +
-    `[$(gear) Settings](command:codexbarUsage.openSettings) · ` +
-    `[$(pin) Pin to status bar](command:codexbarUsage.toggle)</sub>\n\n`
+    `<sub>${tr('updated {0}', state.at.toLocaleTimeString())} · ` +
+    `[$(refresh) ${tr('Refresh')}](command:codexbarUsage.refresh) · ` +
+    `[$(gear) ${tr('Settings')}](command:codexbarUsage.openSettings) · ` +
+    `[$(pin) ${tr('Pin to status bar')}](command:codexbarUsage.toggle)</sub>\n\n`
   );
 
   for (const [id, provider] of Object.entries(state.providers)) {
     md.appendMarkdown('---\n\n');
     if (!provider || provider.error) {
-      md.appendMarkdown(`**${id}** — ${providerError(provider) || 'no data'}\n\n`);
+      md.appendMarkdown(`**${id}** — ${providerError(provider) || tr('no data')}\n\n`);
       continue;
     }
     const u = provider.usage || {};
-    const account = (u.identity && u.identity.accountEmail) || provider.account || '';
+    const rawAccount = (u.identity && u.identity.accountEmail) || provider.account || '';
+    const account = prefs.hidePersonalInfo ? tr('account hidden (CodexBar hidePersonalInfo)') : rawAccount;
     const plan = u.loginMethod || (u.identity && u.identity.loginMethod) || '';
-    md.appendMarkdown(`**${id}**${account ? ` · \`${account}\`` : ''}${plan ? ` · ${plan}` : ''}\n\n`);
+    md.appendMarkdown(`**${id}**${account ? ` · ${rawAccount && !prefs.hidePersonalInfo ? `\`${account}\`` : account}` : ''}${plan ? ` · ${plan}` : ''}\n\n`);
     if (provider.stale) {
-      md.appendMarkdown(`> stale — last good reading ${formatLocal(provider.staleSince)}<br>> ${provider.lastError || 'fetch failed'}\n\n`);
+      md.appendMarkdown(`> ${tr('stale — last good reading {0}', formatLocal(provider.staleSince))}<br>> ${provider.lastError || tr('fetch failed')}\n\n`);
     }
     for (const w of windows(provider)) {
       const bits = [];
       if (!w.isBalance && w.usedPercent !== null) {
-        bits.push(`${Math.round(w.usedPercent)}% used · ${100 - Math.round(w.usedPercent)}% left`);
+        bits.push(`${Math.round(w.usedPercent)}% / ${100 - Math.round(w.usedPercent)}%`);
         if (w.resetsAt) bits.push(`↻ ${countdown(w.resetsAt)}`);
       }
       if (w.resetDescription) bits.push(w.resetDescription);
-      else if (w.resetsAt) bits.push(`resets ${formatLocal(w.resetsAt)}`);
+      else if (w.resetsAt) bits.push(`${tr('expires {0}', formatLocal(w.resetsAt))}`);
       if (bits.length) md.appendMarkdown(`- ${w.label}: ${bits.join(' · ')}\n`);
     }
     const cost = u.providerCost;
     if (cost && cost.limit) {
-      md.appendMarkdown(`- ${cost.period || 'extra usage'}: ${cost.used}/${cost.limit} ${cost.currencyCode || ''}\n`);
+      md.appendMarkdown(`- ${cost.period || tr('extra usage')}: ${cost.used}/${cost.limit} ${cost.currencyCode || ''}\n`);
     }
     for (const c of counters(provider)) {
       if (c.kind === 'credits') {
-        md.appendMarkdown(`- credits: ${c.value}\n`);
+        md.appendMarkdown(`- ${tr('credits')}: ${c.value}\n`);
       } else {
-        md.appendMarkdown(`- reset credits: ${c.value}${c.nextExpiresAt ? ` (next expires ${formatLocal(c.nextExpiresAt)})` : ''}\n`);
+        md.appendMarkdown(`- ${tr('reset credits')}: ${c.value}${c.nextExpiresAt ? ` (${tr('next expires {0}', formatLocal(c.nextExpiresAt))})` : ''}\n`);
         for (const credit of c.list.slice(0, 4)) {
           if (credit.status && credit.status !== 'available') continue;
-          md.appendMarkdown(`  - ${credit.title || 'reset'} · expires ${formatLocal(credit.expires_at)} (${countdown(credit.expires_at)})\n`);
+          md.appendMarkdown(`  - ${credit.title || 'reset'} · ${tr('expires {0}', formatLocal(credit.expires_at))} (${countdown(credit.expires_at)})\n`);
         }
       }
     }
     const meta = [];
-    if (provider.source) meta.push(`source ${provider.source}`);
-    if (u.dataConfidence) meta.push(`confidence ${u.dataConfidence}`);
+    if (provider.source) meta.push(tr('source {0}', provider.source));
+    if (u.dataConfidence) meta.push(tr('confidence {0}', u.dataConfidence));
     if (provider.version) meta.push(`codexbar ${provider.version}`);
     if (meta.length) md.appendMarkdown(`\n<sub>${meta.join(' · ')}</sub>\n`);
     md.appendMarkdown('\n');
@@ -460,6 +554,9 @@ function nextIntervalMs() {
   const s = settings();
   if (s.refreshMode === 'off') return 0;
   if (s.refreshMode === 'fixed') return s.refreshMinutes * 60000;
+  // CodexBar may be configured with a fixed number of minutes; follow it.
+  const inherited = Number(codexbarPrefs().refreshFrequency);
+  if (Number.isFinite(inherited) && inherited > 0) return inherited * 60000;
   if (!snapshot) return ADAPTIVE_IDLE_MIN * 60000;
 
   if (Object.values(snapshot.providers).some(p => p && p.error)) return ADAPTIVE_ERROR_MIN * 60000;
@@ -488,58 +585,60 @@ function toggleExpanded() {
   paint();
 }
 
-const REFRESH_BUTTON = { iconPath: new vscode.ThemeIcon('refresh'), tooltip: 'Refresh now' };
-const PIN_BUTTON = { iconPath: new vscode.ThemeIcon('pin'), tooltip: 'Pin details into the status bar' };
+const REFRESH_BUTTON = { iconPath: new vscode.ThemeIcon('refresh'), tooltip: tr('Refresh now') };
+const PIN_BUTTON = { iconPath: new vscode.ThemeIcon('pin'), tooltip: tr('Pin details into the status bar') };
 
 /** Detail dialog shown on click: one row per provider window, with refresh and
- *  pin available as buttons on the first row. */
+ *  pin available as buttons on the first row. Fully localised via vscode.l10n. */
 async function showDetails() {
   if (!snapshot) await refresh({ silent: true });
-  if (!snapshot) return vscode.window.showWarningMessage('CodexBar: no data yet.');
+  if (!snapshot) return vscode.window.showWarningMessage(tr('CodexBar: no data yet.'));
 
+  const prefs = codexbarPrefs();
   const items = [];
   for (const [id, provider] of Object.entries(snapshot.providers)) {
     if (!provider || provider.error) {
-      items.push({ label: `$(error) ${id}`, description: 'fetch failed', detail: providerError(provider) || 'no data' });
+      items.push({ label: `$(error) ${id}`, description: tr('fetch failed'), detail: providerError(provider) || tr('no data') });
       continue;
     }
     const u = provider.usage || {};
-    const account = (u.identity && u.identity.accountEmail) || provider.account || '';
-    const stale = provider.stale ? ` · stale since ${formatLocal(provider.staleSince)}` : '';
-    const detail = [account, `updated ${formatLocal(provider.fetchedAt || snapshot.at)}${stale}`].filter(Boolean).join(' · ');
+    const rawAccount = (u.identity && u.identity.accountEmail) || provider.account || '';
+    const account = prefs.hidePersonalInfo ? tr('account hidden (CodexBar hidePersonalInfo)') : rawAccount;
+    const stale = provider.stale ? ` · ${tr('stale since {0}', formatLocal(provider.staleSince))}` : '';
+    const detail = [account, `${tr('updated {0}', formatLocal(provider.fetchedAt || snapshot.at))}${stale}`].filter(Boolean).join(' · ');
     for (const w of windows(provider)) {
       const bits = [];
       if (!w.isBalance && w.usedPercent !== null) {
-        bits.push(`${Math.round(w.usedPercent)}% used · ${100 - Math.round(w.usedPercent)}% left`);
+        bits.push(`${Math.round(w.usedPercent)}% / ${100 - Math.round(w.usedPercent)}%`);
         if (w.resetsAt) bits.push(`↻ ${countdown(w.resetsAt)}`);
       }
       if (w.resetDescription) bits.push(w.resetDescription);
       else if (w.balance) bits.push(w.balance);
-      else if (w.resetsAt) bits.push(`resets ${formatLocal(w.resetsAt)}`);
+      else if (w.resetsAt) bits.push(tr('expires {0}', formatLocal(w.resetsAt)));
       items.push({ label: `$(graph) ${id} · ${w.label}`, description: bits.join(' · '), detail });
     }
     for (const c of counters(provider)) {
       if (c.kind === 'credits') {
-        items.push({ label: `$(coin) ${id} · credits`, description: c.value, detail });
+        items.push({ label: `$(coin) ${id} · ${tr('credits')}`, description: c.value, detail });
       } else {
         items.push({
-          label: `$(tag) ${id} · reset credits`,
-          description: `${c.value} available`,
+          label: `$(tag) ${id} · ${tr('reset credits')}`,
+          description: tr('{0} available', c.value),
           detail: c.list.filter(x => !x.status || x.status === 'available').slice(0, 4)
-            .map(x => `${x.title || 'reset'} — expires ${formatLocal(x.expires_at)} (${countdown(x.expires_at)})`)
+            .map(x => `${x.title || 'reset'} — ${tr('expires {0}', formatLocal(x.expires_at))} (${countdown(x.expires_at)})`)
             .join(' · ') || detail
         });
       }
     }
   }
   if (!items.length) {
-    items.push({ label: '$(info) no providers enabled in CodexBar', description: '', detail: 'enable providers in the CodexBar app' });
+    items.push({ label: `$(info) ${tr('no providers enabled in CodexBar')}`, description: '', detail: tr('enable providers in the CodexBar app') });
   }
   items[0].buttons = [REFRESH_BUTTON, PIN_BUTTON];
-  items.push({ label: '$(gear) Settings', description: '', detail: 'codexbarUsage.*', action: 'settings' });
+  items.push({ label: `$(gear) ${tr('Settings')}`, description: '', detail: 'codexbarUsage.*', action: 'settings' });
 
   const picked = await vscode.window.showQuickPick(items, {
-    title: `CodexBar @ ${snapshot.host} — updated ${snapshot.at.toLocaleTimeString()}`,
+    title: `CodexBar @ ${snapshot.host} — ${tr('updated {0}', snapshot.at.toLocaleTimeString())}`,
     matchOnDetail: true,
     ignoreFocusOut: true
   });

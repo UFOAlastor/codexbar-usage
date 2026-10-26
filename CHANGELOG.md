@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- **Settings no longer Codex/DeepSeek-centric.** `inheritCodexBar` (default on) reads CodexBar's own config and defaults: enabled providers, `refreshFrequency`, menu-bar sort preference (`menuBarShowsHighestUsage` / `providersSortedAlphabetically`) and `hidePersonalInfo`.
+- New `sortOrder` (`codexbar` / `usage` / `alphabetical`) and `hiddenProviders` settings.
+- **Runtime localisation** through `vscode.l10n.t()` with `l10n/bundle.l10n.json` + `l10n/bundle.l10n.zh-cn.json`: status-bar wording, hover card and the whole click dialog are Chinese when VS Code is Chinese (window labels such as `Weekly` → `每周`, `Balance` → `余额` included).
+- `dev-test.js` accepts `TEST_LOCALE=zh-cn` to render the real translation bundle headless.
+- Balance windows are detected from the untranslated label, so a translated `余额` row no longer renders as `0% / 100%`.
+
 ## 0.4.0
 
 - **All CodexBar providers**, not just Codex and DeepSeek: the extension asks CodexBar for its enabled providers (`codexbar usage` with no `--provider`) and renders them generically — windows, balances, credits and reset credits all derive from the CLI payload.

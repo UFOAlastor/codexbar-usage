@@ -2,7 +2,7 @@
   "name": "codexbar-usage",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "ZanderAlastor",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -58,24 +58,6 @@
     "configuration": {
       "title": "%config.title%",
       "properties": {
-        "codexbarUsage.executable": {
-          "type": "string",
-          "default": "codexbar",
-          "scope": "machine-overridable",
-          "description": "%config.executable.desc%"
-        },
-        "codexbarUsage.extraPath": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "/opt/homebrew/bin",
-            "/usr/local/bin"
-          ],
-          "scope": "machine-overridable",
-          "description": "%config.extraPath.desc%"
-        },
         "codexbarUsage.providers": {
           "type": "array",
           "items": {
@@ -112,6 +94,37 @@
           "default": false,
           "scope": "window",
           "description": "%config.showCounters.desc%"
+        },
+        "codexbarUsage.inheritCodexBar": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine-overridable",
+          "markdownDescription": "%config.inheritCodexBar.desc%"
+        },
+        "codexbarUsage.sortOrder": {
+          "type": "string",
+          "enum": [
+            "codexbar",
+            "usage",
+            "alphabetical"
+          ],
+          "enumDescriptions": [
+            "%config.sortOrder.codexbar%",
+            "%config.sortOrder.usage%",
+            "%config.sortOrder.alphabetical%"
+          ],
+          "default": "codexbar",
+          "scope": "window",
+          "description": "%config.sortOrder.desc%"
+        },
+        "codexbarUsage.hiddenProviders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "markdownDescription": "%config.hiddenProviders.desc%"
         },
         "codexbarUsage.refreshMode": {
           "type": "string",
@@ -153,8 +166,27 @@
           "default": 95,
           "scope": "window",
           "description": "%config.errorThreshold.desc%"
+        },
+        "codexbarUsage.executable": {
+          "type": "string",
+          "default": "codexbar",
+          "scope": "machine-overridable",
+          "description": "%config.executable.desc%"
+        },
+        "codexbarUsage.extraPath": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/opt/homebrew/bin",
+            "/usr/local/bin"
+          ],
+          "scope": "machine-overridable",
+          "description": "%config.extraPath.desc%"
         }
       }
     }
-  }
+  },
+  "l10n": "./l10n"
 }

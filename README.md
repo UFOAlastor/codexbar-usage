@@ -45,9 +45,25 @@ Hovering shows a small card anchored right above the item (the only popover VS C
 
 A failed fetch never blanks the item: the extension retries once, falls back to the local Codex CLI source where that makes sense, and then keeps the **last good reading** marked `~`, with the age of that reading and the failure reason in the card.
 
+### CodexBar stays the single source of truth
+
+With `inheritCodexBar` on (default) the extension reads CodexBar's **own** configuration instead of asking you to configure things twice:
+
+| Read from | Used for |
+| --- | --- |
+| `~/.config/codexbar/config.json` → `providers[].enabled` | which providers exist at all (the CLI is also asked for the enabled set) |
+| CodexBar defaults → `refreshFrequency` | a fixed cadence set in the app is honoured instead of the adaptive one |
+| CodexBar defaults → `menuBarShowsHighestUsage` / `providersSortedAlphabetically` | segment order in the status bar (`sortOrder: codexbar`) |
+| CodexBar defaults → `hidePersonalInfo` | masks account e-mails in the hover card and the dialog |
+
 ### Languages
 
-English by default, Simplified Chinese when VS Code runs in Chinese (`package.nls.json` / `package.nls.zh-cn.json`). Command titles, setting names, descriptions and enum labels are all translated.
+English by default, Simplified Chinese when VS Code runs in Chinese. Two layers:
+
+- `package.nls.json` / `package.nls.zh-cn.json` — command titles, setting names, descriptions, enum labels (manifest strings).
+- `l10n/bundle.l10n.json` / `l10n/bundle.l10n.zh-cn.json` — everything at runtime through `vscode.l10n.t()`: the status-bar wording (`剩 95%`), the hover card, and every row of the detail dialog (`重置券`, `可用 2 张`, `更新于 …`, `每周`, `余额`).
+
+Nothing to configure; VS Code picks the bundle from its display language.
 
 ## Settings
 
@@ -56,6 +72,9 @@ English by default, Simplified Chinese when VS Code runs in Chinese (`package.nl
 | `codexbarUsage.executable` | `codexbar` | CLI name or absolute path, resolved on the workspace host. |
 | `codexbarUsage.extraPath` | `["/opt/homebrew/bin","/usr/local/bin"]` | Extra PATH entries (Homebrew is often absent from the extension-host PATH). |
 | `codexbarUsage.providers` | `[]` | Empty = follow CodexBar's own enabled providers. Fill in ids (`codex`, `claude`, `gemini`, …) to force a set. |
+| `codexbarUsage.inheritCodexBar` | `true` | Read CodexBar's config/defaults for providers, cadence, sort order and personal-info masking. |
+| `codexbarUsage.sortOrder` | `codexbar` | `codexbar` (follow the app), `usage` (most consumed first) or `alphabetical`. |
+| `codexbarUsage.hiddenProviders` | `[]` | Provider ids to keep out of the status bar / detail views. |
 | `codexbarUsage.statusBarLimit` | `3` | Providers shown in the status bar (most constrained first). |
 | `codexbarUsage.metric` | `remaining` | `remaining` or `used`. |
 | `codexbarUsage.showCounters` | `false` | Also show credits / reset credits in the collapsed item. |

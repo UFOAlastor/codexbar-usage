@@ -21,5 +21,11 @@
   "config.metric.desc": "Whether percentages show what is left or what has been used.",
   "config.metric.remaining": "Show the remaining share of each window.",
   "config.metric.used": "Show the consumed share of each window.",
-  "config.showCounters.desc": "Also show secondary counters (banked credits, reset credits) in the collapsed status bar item."
+  "config.showCounters.desc": "Also show secondary counters (banked credits, reset credits) in the collapsed status bar item.",
+  "config.inheritCodexBar.desc": "Read CodexBar's own configuration (`~/.config/codexbar/config.json` and the CodexBar defaults) for the enabled provider set, refresh cadence, sort order and personal-info masking — so CodexBar stays the single place you configure things.",
+  "config.sortOrder.desc": "Order of the segments in the status bar.",
+  "config.sortOrder.codexbar": "Follow CodexBar's own menu-bar preferences (highest usage, or alphabetical).",
+  "config.sortOrder.usage": "Most consumed provider first.",
+  "config.sortOrder.alphabetical": "Alphabetical by provider id.",
+  "config.hiddenProviders.desc": "Provider ids to keep out of the status bar and the detail views, even when CodexBar has them enabled. Example: `[\"tavily\"]`."
 }

@@ -10,6 +10,7 @@
  */
 
 const Module = require('module');
+const fs = require('fs');
 const path = require('path');
 
 const values = {
@@ -19,6 +20,9 @@ const values = {
   'codexbarUsage.statusBarLimit': 3,
   'codexbarUsage.metric': 'remaining',
   'codexbarUsage.showCounters': false,
+  'codexbarUsage.inheritCodexBar': true,
+  'codexbarUsage.sortOrder': 'codexbar',
+  'codexbarUsage.hiddenProviders': [],
   'codexbarUsage.refreshMode': 'off',
   'codexbarUsage.refreshMinutes': 10,
   'codexbarUsage.refreshOnFocus': false,
@@ -27,6 +31,25 @@ const values = {
 };
 
 const item = { text: '', tooltip: null, command: '', name: '', visible: false, show() { this.visible = true; } };
+
+// Runtime l10n: TEST_LOCALE=zh-cn loads the real bundle so translations can be checked headless.
+const locale = process.env.TEST_LOCALE || '';
+let bundle = {};
+if (locale) {
+  const file = path.resolve(__dirname, '..', 'l10n', `bundle.l10n.${locale}.json`);
+  bundle = JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+const l10n = {
+  t(source, ...args) {
+    let out = bundle[source] || source;
+    if (args.length === 1 && args[0] && typeof args[0] === 'object') {
+      for (const [k, v] of Object.entries(args[0])) out = out.split(`{${k}}`).join(String(v));
+      return out;
+    }
+    args.forEach((v, i) => { out = out.split(`{${i}}`).join(String(v)); });
+    return out;
+  }
+};
 const commands = {};
 let lastQuickPick = null;
 
@@ -51,6 +74,7 @@ const vscode = {
     showQuickPick: async items => { lastQuickPick = items; return undefined; },
     onDidChangeWindowState: () => ({ dispose() {} })
   },
+  l10n,
   commands: {
     registerCommand: (name, fn) => { commands[name] = fn; return { dispose() {} }; },
     executeCommand: async () => {}
