@@ -123,7 +123,11 @@ let statusItem = null;
 let channel = null;
 /** @type {NodeJS.Timeout|null} */
 let timer = null;
-let inFlight = false;
+let inFlight = null;
+let executableMissing = false;
+let disposed = true;
+let configGeneration = 0;
+let pendingConfigurationRefresh = false;
 let lastFocusRefresh = 0;
 /** @type {{host:string, at:Date, providers:Object}|null} */
 let snapshot = null;
@@ -153,22 +157,25 @@ function log(line) {
   if (channel) channel.appendLine(`[${new Date().toISOString()}] ${line}`);
 }
 
-function resolvePath() {
-  const { extraPath } = settings();
+function resolvePath({ extraPath }) {
   const base = (process.env.PATH || '/usr/bin:/bin').split(':');
   return [...new Set([...extraPath, ...base].filter(Boolean))].join(':');
 }
 
-function run(args) {
-  const { executable } = settings();
+function run(args, request) {
+  const { executable } = request.settings;
+  // A changed configuration or deactivation invalidates the rest of this fetch.
+  if (disposed || request.generation !== configGeneration) {
+    return Promise.reject(new Error('Refresh superseded'));
+  }
   return new Promise((resolve, reject) => {
     cp.execFile(
       executable,
       args,
-      { timeout: EXEC_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, PATH: resolvePath() } },
+      { timeout: EXEC_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, PATH: resolvePath(request.settings) } },
       (err, stdout, stderr) => {
         if (err) {
-          err.userMessage = describeError(err, stderr);
+          err.userMessage = describeError(err, stderr, executable);
           return reject(err);
         }
         resolve(stdout);
@@ -177,8 +184,8 @@ function run(args) {
   });
 }
 
-function describeError(err, stderr) {
-  if (err.code === 'ENOENT') return `${settings().executable} not found on ${os.hostname()}`;
+function describeError(err, stderr, executable) {
+  if (err.code === 'ENOENT') return `${executable} not found on ${os.hostname()}`;
   const text = String(stderr || err.message || '').trim().split('\n').slice(-3).join(' ');
   return text.slice(0, 400) || String(err.message);
 }
@@ -194,16 +201,23 @@ function providerError(entry) {
 
 const FETCH_ATTEMPTS = 2;
 
+function stopFetch(err, request) {
+  // Only the spawn error code proves the executable is absent. Provider JSON,
+  // stderr mentioning ENOENT, network errors and EACCES keep the normal policy.
+  if (err.code === 'ENOENT' || disposed || request.generation !== configGeneration) throw err;
+}
+
 /** Ask CodexBar for the providers *it* has enabled: no `--provider` flag means
  *  "honour the in-app toggles", which keeps the call small and fast. */
-async function fetchEnabled() {
+async function fetchEnabled(request) {
   let lastError = null;
   for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
     try {
-      const raw = await run(['usage', '--format', 'json']);
+      const raw = await run(['usage', '--format', 'json'], request);
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : [parsed];
     } catch (err) {
+      stopFetch(err, request);
       lastError = err;
       log(`enabled-providers fetch attempt ${attempt + 1} failed: ${err.userMessage || err.message}`);
     }
@@ -211,30 +225,49 @@ async function fetchEnabled() {
   return [{ provider: 'all', error: { message: (lastError && (lastError.userMessage || lastError.message)) || 'unknown error' } }];
 }
 
-/** Explicit provider list from settings: one call per provider, in parallel. */
-async function fetchExplicit(names) {
-  return Promise.all(names.map(async name => {
+/** Stop at the first missing executable, including for multiple providers.
+ *  Sequential calls avoid launching one doomed process per configured id. */
+async function fetchExplicit(names, request) {
+  const entries = [];
+  request.completedEntries = entries;
+  for (const name of new Set(names)) {
+    let entry = null;
     let lastError = null;
-    for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < FETCH_ATTEMPTS && !entry; attempt++) {
       for (const extra of [[], ['--source', 'cli']]) {
         try {
-          const raw = await run(['usage', '--provider', name, '--format', 'json', ...extra]);
+          const raw = await run(['usage', '--provider', name, '--format', 'json', ...extra], request);
           const parsed = JSON.parse(raw);
-          const entry = Array.isArray(parsed) ? parsed[0] : parsed;
-          return { ...entry, provider: (entry && entry.provider) || name };
+          const data = Array.isArray(parsed) ? parsed[0] : parsed;
+          entry = { ...data, provider: (data && data.provider) || name };
+          break;
         } catch (err) {
+          stopFetch(err, request);
           lastError = err;
           log(`${name} attempt ${attempt + 1} (${extra.join(' ') || 'default'}) failed: ${err.userMessage || err.message}`);
         }
       }
     }
-    return { provider: name, error: { message: (lastError && (lastError.userMessage || lastError.message)) || 'unknown error' } };
-  }));
+    entries.push(entry || { provider: name, error: { message: (lastError && (lastError.userMessage || lastError.message)) || 'unknown error' } });
+  }
+  return entries;
 }
 
-async function fetchAll() {
-  const s = settings();
-  const entries = s.providers.length ? await fetchExplicit(s.providers) : await fetchEnabled();
+async function fetchAll(request) {
+  const s = request.settings;
+  let entries;
+  let missing = false;
+  try {
+    entries = s.providers.length ? await fetchExplicit(s.providers, request) : await fetchEnabled(request);
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+    missing = true;
+    const reason = err.userMessage || err.message;
+    const completed = request.completedEntries || [];
+    entries = (s.providers.length ? [...new Set(s.providers)] : ['all'])
+      .map(provider => completed.find(entry => entry.provider === provider)
+        || { provider, error: { message: reason } });
+  }
   const now = new Date();
   const providers = {};
 
@@ -250,9 +283,9 @@ async function fetchAll() {
           : { ...provider, stale: true, staleSince: provider.fetchedAt || snapshot.at, lastError: reason };
       }
       log(`enabled fetch failed (${reason}); keeping ${Object.keys(carried).length} stale provider(s)`);
-      return { host: os.hostname(), at: now, providers: carried };
+      return { host: os.hostname(), at: now, providers: carried, executableMissing: missing };
     }
-    return { host: os.hostname(), at: now, providers: { codexbar: { provider: 'codexbar', error: { message: reason } } } };
+    return { host: os.hostname(), at: now, providers: { codexbar: { provider: 'codexbar', error: { message: reason } } }, executableMissing: missing };
   }
 
   for (const entry of entries) {
@@ -269,11 +302,11 @@ async function fetchAll() {
       providers[id] = { ...entry, provider: id, fetchedAt: now };
     }
   }
-  const hidden = new Set(settings().hiddenProviders);
+  const hidden = new Set(s.hiddenProviders);
   if (hidden.size) {
     for (const id of Object.keys(providers)) if (hidden.has(id)) delete providers[id];
   }
-  return { host: os.hostname(), at: now, providers };
+  return { host: os.hostname(), at: now, providers, executableMissing: missing };
 }
 
 /* ---------- formatting helpers ---------- */
@@ -437,7 +470,7 @@ function statusText(state) {
   }
   if (!parts.length) {
     const failures = Object.values(state.providers).filter(p => p && p.error);
-    parts.push(failures.length ? `codexbar ✗ ${failures.length}` : 'codexbar');
+    parts.push(failures.length ? 'codexbar ✗' : 'codexbar');
   }
 
   return `$(pulse) ${parts.join(' · ')}`;
@@ -456,6 +489,9 @@ function detailCard(state) {
     `[$(refresh) ${tr('Refresh')}](command:codexbarUsage.refresh) · ` +
     `[$(gear) ${tr('Settings')}](command:codexbarUsage.openSettings)</sub>\n\n`
   );
+  if (state.executableMissing) {
+    md.appendMarkdown(`> ${tr('Executable not found. Automatic refresh is paused; click the status bar, use Refresh, or change settings to detect again.')}\n\n`);
+  }
 
   for (const [id, provider] of Object.entries(state.providers)) {
     md.appendMarkdown('---\n\n');
@@ -520,21 +556,36 @@ function paint() {
 
 /* ---------- refresh ---------- */
 
-async function refresh({ silent = false } = {}) {
-  if (inFlight) return;
-  inFlight = true;
+function refresh({ silent = false, automatic = false } = {}) {
+  if (disposed || (automatic && executableMissing)) return Promise.resolve();
+  // All callers await the same fetch. Configuration changes queue one fetch of
+  // the newest settings, without overlapping or committing an obsolete result.
+  if (inFlight) return inFlight;
+  cancelRefreshTimer();
   if (statusItem && !snapshot) statusItem.text = '$(sync~spin) codexbar';
-  try {
-    snapshot = await fetchAll();
-    log(`refreshed on ${snapshot.host}: ${Object.keys(snapshot.providers).join(', ')}`);
-    paint();
-  } catch (err) {
-    log(`refresh failed: ${err.message}`);
-    if (!silent) vscode.window.showErrorMessage(`CodexBar: ${err.message}`);
-  } finally {
-    inFlight = false;
-    scheduleRefresh();
-  }
+  inFlight = (async () => {
+    do {
+      pendingConfigurationRefresh = false;
+      const generation = configGeneration;
+      try {
+        const result = await fetchAll({ settings: settings(), generation });
+        if (disposed || generation !== configGeneration) continue;
+        snapshot = result;
+        executableMissing = result.executableMissing;
+        log(`refreshed on ${snapshot.host}: ${Object.keys(snapshot.providers).join(', ')}`);
+        if (executableMissing) log('executable missing; automatic refresh paused until manual refresh or configuration change');
+        paint();
+      } catch (err) {
+        if (disposed || generation !== configGeneration) continue;
+        log(`refresh failed: ${err.message}`);
+        if (!silent) vscode.window.showErrorMessage(`CodexBar: ${err.message}`);
+      }
+    } while (!disposed && pendingConfigurationRefresh);
+  })().finally(() => {
+    inFlight = null;
+    if (!disposed) scheduleRefresh();
+  });
+  return inFlight;
 }
 
 const ADAPTIVE_IDLE_MIN = 10;
@@ -544,6 +595,7 @@ const ADAPTIVE_ERROR_MIN = 5;
 
 /** Adaptive cadence, mirroring CodexBar's own 'adaptive' refresh setting. */
 function nextIntervalMs() {
+  if (disposed || executableMissing) return 0;
   const s = settings();
   if (s.refreshMode === 'off') return 0;
   if (s.refreshMode === 'fixed') return s.refreshMinutes * 60000;
@@ -559,15 +611,21 @@ function nextIntervalMs() {
   return ADAPTIVE_IDLE_MIN * 60000;
 }
 
-function scheduleRefresh() {
-  if (timer) clearTimeout(timer);
+function cancelRefreshTimer() {
+  if (timer !== null) clearTimeout(timer);
   timer = null;
+}
+
+function scheduleRefresh() {
+  cancelRefreshTimer();
   const ms = nextIntervalMs();
   if (!ms) return;
-  timer = setTimeout(async () => {
-    await refresh({ silent: true });
-    scheduleRefresh();
+  const scheduled = setTimeout(() => {
+    if (timer !== scheduled || disposed || executableMissing) return;
+    timer = null;
+    refresh({ silent: true, automatic: true });
   }, ms);
+  timer = scheduled;
   log(`next refresh in ${Math.round(ms / 60000)} min (mode=${settings().refreshMode})`);
 }
 
@@ -578,7 +636,8 @@ const REFRESH_BUTTON = { iconPath: new vscode.ThemeIcon('refresh'), tooltip: tr(
 /** Detail dialog shown on click: one row per provider window, with refresh as a
  *  button on the first row. Fully localised via vscode.l10n. */
 async function showDetails() {
-  if (!snapshot) await refresh({ silent: true });
+  await refresh({ silent: true });
+  if (disposed) return;
   if (!snapshot) return vscode.window.showWarningMessage(tr('CodexBar: no data yet.'));
 
   const prefs = codexbarPrefs();
@@ -639,6 +698,9 @@ function openSettings() {
 }
 
 function activate(context) {
+  disposed = false;
+  executableMissing = false;
+  lastFocusRefresh = 0;
   channel = vscode.window.createOutputChannel('CodexBar');
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.name = 'CodexBar Usage';
@@ -652,27 +714,30 @@ function activate(context) {
     vscode.commands.registerCommand('codexbarUsage.showDetails', showDetails),
     vscode.commands.registerCommand('codexbarUsage.openSettings', openSettings),
     vscode.window.onDidChangeWindowState(state => {
-      if (!state.focused || !settings().refreshOnFocus) return;
+      if (!state.focused || executableMissing || !settings().refreshOnFocus) return;
       const now = Date.now();
       if (now - lastFocusRefresh < 60000) return;
       lastFocusRefresh = now;
-      refresh({ silent: true });
+      refresh({ silent: true, automatic: true });
     }),
     vscode.workspace.onDidChangeConfiguration(e => {
       if (!e.affectsConfiguration(SECTION)) return;
-      scheduleRefresh();
+      configGeneration++;
+      pendingConfigurationRefresh = true;
+      prefsCache = { at: 0, value: null };
       if (snapshot) paint();
       refresh({ silent: true });
     })
   );
 
   refresh({ silent: true });
-  scheduleRefresh();
 }
 
 function deactivate() {
-  if (timer) clearTimeout(timer);
-  timer = null;
+  disposed = true;
+  configGeneration++;
+  pendingConfigurationRefresh = false;
+  cancelRefreshTimer();
 }
 
 module.exports = {

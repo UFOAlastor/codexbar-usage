@@ -2,7 +2,12 @@
   "name": "codexbar-usage",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "0.6.0",
+  "version": "0.6.1",
+  "scripts": {
+    "check": "node --check src/extension.js",
+    "test": "node --test scripts/refresh-test.js",
+    "package": "npx @vscode/vsce package"
+  },
   "publisher": "ZanderAlastor",
   "license": "MIT",
   "icon": "images/icon.png",

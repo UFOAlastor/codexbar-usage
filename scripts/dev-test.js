@@ -4,7 +4,7 @@
  * Runs the extension against the real codexbar CLI with a stubbed VS Code API and
  * prints what the status bar and detail card render.
  *
- *   node scripts/dev-test.js            # normal render (collapsed, pinned, detail card)
+ *   node scripts/dev-test.js            # normal render (status, hover card, dialog)
  *   node scripts/dev-test.js --stale    # then break the CLI and check stale fallback
  *   WAIT_MS=90000 node scripts/dev-test.js
  */

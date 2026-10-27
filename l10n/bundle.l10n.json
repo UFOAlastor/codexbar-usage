@@ -3,6 +3,7 @@
   "{0}% used": "{0}% used",
   "Refresh": "Refresh",
   "Refresh now": "Refresh now",
+  "Executable not found. Automatic refresh is paused; click the status bar, use Refresh, or change settings to detect again.": "Executable not found. Automatic refresh is paused; click the status bar, use Refresh, or change settings to detect again.",
   "Settings": "Settings",
   "fetch failed": "fetch failed",
   "no data": "no data",

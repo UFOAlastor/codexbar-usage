@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+
+- A missing executable (`execFile` error code `ENOENT`) stops retries, polling and focus refreshes. Click the status bar or use the hover card's Refresh command to detect it again; extension setting changes also re-detect. Normal automatic refresh resumes when the executable is available, respecting the configured refresh mode.
+- Explicit provider lists are deduplicated and fetched sequentially, stopping at the first missing executable instead of launching/retrying it for every provider. Successful and last-good readings are retained.
+- Network, permission, timeout, malformed JSON and provider-reported errors keep their existing retry/fallback and stale-data behavior. Error text mentioning ENOENT does not pause refreshes.
+- The empty failure status now reads `codexbar ✗`, without a provider count. The hover card explains paused detection in English and Simplified Chinese.
+- Concurrent refreshes share a request; setting changes discard obsolete results and queue the newest configuration. Pending timers are cancelled on refresh/deactivation, and late callbacks cannot restart polling.
+
 ## 0.6.0
 
 - **Removed the pin / expand mode** — it duplicated what the hover card and the click dialog already show. The status bar stays one line; the `codexbarUsage.toggle` command is gone.

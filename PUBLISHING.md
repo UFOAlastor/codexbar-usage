@@ -51,7 +51,8 @@ PAT at `https://dev.azure.com/<org>/_usersSettings/tokens` with scope
 
 ```bash
 node --check src/extension.js
-node scripts/dev-test.js                     # renders collapsed / expanded / detail card
+npm test                                     # isolated refresh regressions
+node scripts/dev-test.js                     # optional: real CLI status / hover / dialog
 npx @vscode/vsce package                     # must succeed without warnings other than git remote
 git status --short                           # clean tree
 ```
